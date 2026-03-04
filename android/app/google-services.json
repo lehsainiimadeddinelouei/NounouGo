@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "87748013804",
+    "project_id": "nounougo-6ebbc",
+    "storage_bucket": "nounougo-6ebbc.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:87748013804:android:1b6fbf8b23a92109eaffc9",
+        "android_client_info": {
+          "package_name": "com.example.nounougo"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAU_UWKPf8lP43GwEsHxUtAePOOSbigLjY"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

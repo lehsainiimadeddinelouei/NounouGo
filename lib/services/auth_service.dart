@@ -1,0 +1,110 @@
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+
+class AuthService {
+  static final FirebaseAuth _auth = FirebaseAuth.instance;
+  static final FirebaseFirestore _db = FirebaseFirestore.instance;
+
+  static User? get currentUser => _auth.currentUser;
+  static Stream<User?> get authStateChanges => _auth.authStateChanges();
+
+  static Future<AuthResult> register({
+    required String prenom,
+    required String nom,
+    required String email,
+    required String password,
+    required String phone,
+    required String role,
+    List<String> ageGroups = const [],
+  }) async {
+    try {
+      final credential = await _auth.createUserWithEmailAndPassword(
+        email: email.trim(),
+        password: password,
+      );
+      final user = credential.user!;
+      await user.updateDisplayName('$prenom $nom');
+      await user.sendEmailVerification();
+      await _db.collection('users').doc(user.uid).set({
+        'uid': user.uid,
+        'prenom': prenom.trim(),
+        'nom': nom.trim(),
+        'email': email.trim(),
+        'phone': phone.trim(),
+        'role': role,
+        'ageGroups': ageGroups,
+        'emailVerified': false,
+        'createdAt': FieldValue.serverTimestamp(),
+        'profileComplete': false,
+      });
+      return AuthResult(success: true, message: 'Compte créé ! Vérifiez votre email.');
+    } on FirebaseAuthException catch (e) {
+      return AuthResult(success: false, message: _authErrorMessage(e.code));
+    } catch (e) {
+      return AuthResult(success: false, message: 'Une erreur est survenue. Réessayez.');
+    }
+  }
+
+  static Future<AuthResult> login({
+    required String email,
+    required String password,
+  }) async {
+    try {
+      await _auth.signInWithEmailAndPassword(
+        email: email.trim(),
+        password: password,
+      );
+      return AuthResult(success: true, message: 'Connexion réussie !');
+    } on FirebaseAuthException catch (e) {
+      return AuthResult(success: false, message: _authErrorMessage(e.code));
+    } catch (e) {
+      return AuthResult(success: false, message: 'Une erreur est survenue. Réessayez.');
+    }
+  }
+
+  static Future<AuthResult> sendPasswordReset({required String email}) async {
+    try {
+      await _auth.sendPasswordResetEmail(email: email.trim());
+      return AuthResult(success: true, message: 'Email de réinitialisation envoyé !');
+    } on FirebaseAuthException catch (e) {
+      return AuthResult(success: false, message: _authErrorMessage(e.code));
+    } catch (e) {
+      return AuthResult(success: false, message: 'Une erreur est survenue. Réessayez.');
+    }
+  }
+
+  static Future<void> logout() async {
+    await _auth.signOut();
+  }
+
+  static String _authErrorMessage(String code) {
+    switch (code) {
+      case 'email-already-in-use':
+        return 'Cette adresse email est déjà utilisée.';
+      case 'invalid-email':
+        return 'Adresse email invalide.';
+      case 'weak-password':
+        return 'Mot de passe trop faible (min. 6 caractères).';
+      case 'user-not-found':
+        return 'Aucun compte trouvé avec cet email.';
+      case 'wrong-password':
+        return 'Mot de passe incorrect.';
+      case 'user-disabled':
+        return 'Ce compte a été désactivé.';
+      case 'too-many-requests':
+        return 'Trop de tentatives. Réessayez plus tard.';
+      case 'network-request-failed':
+        return 'Erreur réseau. Vérifiez votre connexion.';
+      case 'invalid-credential':
+        return 'Email ou mot de passe incorrect.';
+      default:
+        return 'Erreur : $code';
+    }
+  }
+}
+
+class AuthResult {
+  final bool success;
+  final String message;
+  const AuthResult({required this.success, required this.message});
+}
