@@ -213,17 +213,10 @@ class NounouProfileScreen extends StatelessWidget {
                   const SizedBox(height: 20),
                 ],
 
-                if (commentaires.isNotEmpty) ...[
-                  _SectionTitle(label: '💬 Avis (${commentaires.length})'),
-                  const SizedBox(height: 10),
-                  ...commentaires.map((c) => _CommentCard(comment: c as Map<String, dynamic>)),
-                ] else ...[
-                  _SectionTitle(label: '💬 Avis'),
-                  const SizedBox(height: 10),
-                  Container(padding: const EdgeInsets.all(20), decoration: _cardDecoration(),
-                    child: const Center(child: Text('Aucun avis pour l\'instant',
-                        style: TextStyle(fontSize: 14, color: AppColors.textGrey)))),
-                ],
+                // ── Avis depuis Firestore ──
+                const _SectionTitle(label: '💬 Avis'),
+                const SizedBox(height: 10),
+                AvisNounouSection(nounouUid: nounouData['uid'] ?? ''),
 
                 const SizedBox(height: 40),
               ]),

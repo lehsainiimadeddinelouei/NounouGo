@@ -1,0 +1,1276 @@
+import 'dart:convert';
+import 'dart:io';
+import 'dart:typed_data';
+import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import '../theme/app_theme.dart';
+
+// ════════════════════════════════════════════════
+// Point d'entrée: AdminScreen
+// Accessible uniquement si role == 'admin' dans Firestore
+// ════════════════════════════════════════════════
+class AdminScreen extends StatefulWidget {
+  const AdminScreen({super.key});
+  @override
+  State<AdminScreen> createState() => _AdminScreenState();
+}
+
+class _AdminScreenState extends State<AdminScreen> {
+  int _tab = 0;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft, end: Alignment.bottomRight,
+            colors: [Color(0xFF1A1A2E), Color(0xFF16213E), Color(0xFF0F3460)],
+          ),
+        ),
+        child: SafeArea(child: Column(children: [
+
+          // ── Header ──
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
+            child: Row(children: [
+              Container(
+                width: 42, height: 42,
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(colors: [AppColors.primaryPink, Color(0xFFE05C7A)]),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Icon(Icons.admin_panel_settings_rounded, color: Colors.white, size: 22),
+              ),
+              const SizedBox(width: 12),
+              const Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text('NounouGo Admin', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: Colors.white)),
+                Text('Tableau de bord', style: TextStyle(fontSize: 12, color: Colors.white54)),
+              ]),
+              const Spacer(),
+              _NotifBadge(),
+            ]),
+          ),
+
+          const SizedBox(height: 20),
+
+          // ── Tabs ──
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            child: Container(
+              padding: const EdgeInsets.all(4),
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.08),
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: Row(children: [
+                _TabBtn(label: '📊 Stats', index: 0, current: _tab, onTap: (i) => setState(() => _tab = i)),
+                _TabBtn(label: '📄 Documents', index: 1, current: _tab, onTap: (i) => setState(() => _tab = i)),
+                _TabBtn(label: '👥 Utilisateurs', index: 2, current: _tab, onTap: (i) => setState(() => _tab = i)),
+              ]),
+            ),
+          ),
+
+          const SizedBox(height: 16),
+
+          // ── Contenu ──
+          Expanded(child: IndexedStack(index: _tab, children: const [
+            _StatsTab(),
+            _DocumentsTab(),
+            _UsersTab(),
+          ])),
+        ])),
+      ),
+    );
+  }
+}
+
+// ── Tab button ──
+class _TabBtn extends StatelessWidget {
+  final String label; final int index, current; final Function(int) onTap;
+  const _TabBtn({required this.label, required this.index, required this.current, required this.onTap});
+  @override
+  Widget build(BuildContext context) {
+    final selected = index == current;
+    return Expanded(child: GestureDetector(
+      onTap: () => onTap(index),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.symmetric(vertical: 10),
+        decoration: BoxDecoration(
+          color: selected ? AppColors.primaryPink : Colors.transparent,
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Text(label, textAlign: TextAlign.center,
+            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700,
+                color: selected ? Colors.white : Colors.white54)),
+      ),
+    ));
+  }
+}
+
+// ── Notif badge documents en attente ──
+class _NotifBadge extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<QuerySnapshot>(
+      stream: FirebaseFirestore.instance.collection('users')
+          .where('role', isEqualTo: 'Babysitter').snapshots(),
+      builder: (_, snap) {
+        int count = 0;
+        final docs = snap.data?.docs ?? [];
+        for (final doc in docs) {
+          final d = doc.data() as Map<String, dynamic>;
+          if (d['diplomePdfStatut'] == 'en_attente' ||
+              d['cvStatut'] == 'en_attente' ||
+              d['cniStatut'] == 'en_attente') count++;
+        }
+        return GestureDetector(
+          onTap: () => _showNotifSheet(context, docs),
+          child: Stack(children: [
+            Container(width: 42, height: 42,
+                decoration: BoxDecoration(color: Colors.white.withOpacity(0.1), borderRadius: BorderRadius.circular(12)),
+                child: const Icon(Icons.notifications_rounded, color: Colors.white, size: 20)),
+            if (count > 0) Positioned(top: 4, right: 4,
+                child: Container(width: 16, height: 16,
+                    decoration: const BoxDecoration(color: Colors.orange, shape: BoxShape.circle),
+                    child: Center(child: Text('$count',
+                        style: const TextStyle(fontSize: 9, color: Colors.white, fontWeight: FontWeight.w800))))),
+          ]),
+        );
+      },
+    );
+  }
+
+  void _showNotifSheet(BuildContext context, List<QueryDocumentSnapshot> docs) {
+    // Construire la liste des notifications (docs en attente)
+    final pending = <Map<String, dynamic>>[];
+    for (final doc in docs) {
+      final d = doc.data() as Map<String, dynamic>;
+      final prenom = d['prenom'] ?? '';
+      final nom = d['nom'] ?? '';
+      if (d['diplomePdfStatut'] == 'en_attente') {
+        pending.add({'nom': '$prenom $nom', 'type': 'Diplome', 'icon': Icons.school_rounded, 'color': AppColors.primaryPink});
+      }
+      if (d['cvStatut'] == 'en_attente') {
+        pending.add({'nom': '$prenom $nom', 'type': 'CV', 'icon': Icons.description_rounded, 'color': AppColors.buttonBlue});
+      }
+      if (d['cniStatut'] == 'en_attente') {
+        pending.add({'nom': '$prenom $nom', "type": "Carte d'identite", 'icon': Icons.badge_rounded, 'color': Colors.teal});
+      }
+    }
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (_) => Container(
+        constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.75),
+        decoration: const BoxDecoration(
+          color: Color(0xFF1A1A2E),
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        child: Column(children: [
+          // Handle
+          Container(margin: const EdgeInsets.only(top: 12),
+              width: 40, height: 4,
+              decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(2))),
+          // Header
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
+            child: Row(children: [
+              const Icon(Icons.notifications_rounded, color: Colors.orange, size: 22),
+              const SizedBox(width: 10),
+              const Text('Documents en attente',
+                  style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: Colors.white)),
+              const Spacer(),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(color: Colors.orange.withOpacity(0.2), borderRadius: BorderRadius.circular(20)),
+                child: Text('${pending.length}',
+                    style: const TextStyle(fontSize: 13, color: Colors.orange, fontWeight: FontWeight.w800)),
+              ),
+            ]),
+          ),
+          const Divider(color: Colors.white12, height: 1),
+          // Liste
+          Expanded(
+            child: pending.isEmpty
+                ? const Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+              Icon(Icons.check_circle_rounded, color: Colors.green, size: 48),
+              SizedBox(height: 12),
+              Text('Tout est a jour !',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: Colors.white)),
+              SizedBox(height: 6),
+              Text('Aucun document en attente',
+                  style: TextStyle(fontSize: 13, color: Colors.white38)),
+            ]))
+                : ListView.builder(
+              padding: const EdgeInsets.all(16),
+              itemCount: pending.length,
+              itemBuilder: (_, i) {
+                final n = pending[i];
+                final color = n['color'] as Color;
+                return Container(
+                  margin: const EdgeInsets.only(bottom: 10),
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: color.withOpacity(0.08),
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: color.withOpacity(0.25)),
+                  ),
+                  child: Row(children: [
+                    Container(width: 42, height: 42,
+                        decoration: BoxDecoration(color: color.withOpacity(0.15), borderRadius: BorderRadius.circular(12)),
+                        child: Icon(n['icon'] as IconData, color: color, size: 20)),
+                    const SizedBox(width: 12),
+                    Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Text(n['nom'] as String,
+                          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: Colors.white)),
+                      const SizedBox(height: 3),
+                      Text('${n['type']} en attente de verification',
+                          style: const TextStyle(fontSize: 12, color: Colors.white54)),
+                    ])),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                          color: Colors.orange.withOpacity(0.15), borderRadius: BorderRadius.circular(20)),
+                      child: const Text('En attente',
+                          style: TextStyle(fontSize: 10, color: Colors.orange, fontWeight: FontWeight.w700)),
+                    ),
+                  ]),
+                );
+              },
+            ),
+          ),
+          // Bouton fermer
+          Padding(
+            padding: EdgeInsets.fromLTRB(16, 8, 16, MediaQuery.of(context).padding.bottom + 16),
+            child: GestureDetector(
+              onTap: () => Navigator.pop(context),
+              child: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.08),
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: Colors.white12),
+                ),
+                child: const Text('Fermer', textAlign: TextAlign.center,
+                    style: TextStyle(fontSize: 15, color: Colors.white70, fontWeight: FontWeight.w700)),
+              ),
+            ),
+          ),
+        ]),
+      ),
+    );
+  }
+}
+
+// ════════════════════════════════════════════════
+// ONGLET 1 — STATISTIQUES
+// ════════════════════════════════════════════════
+class _StatsTab extends StatelessWidget {
+  const _StatsTab();
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView(
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      children: [
+        // Cartes stats en temps réel
+        StreamBuilder<QuerySnapshot>(
+          stream: FirebaseFirestore.instance.collection('users').snapshots(),
+          builder: (_, snap) {
+            final users = snap.data?.docs ?? [];
+            final parents = users.where((d) => (d.data() as Map)['role'] == 'Parent').length;
+            final nounous = users.where((d) => (d.data() as Map)['role'] == 'Babysitter').length;
+            return Column(children: [
+              Row(children: [
+                Expanded(child: _StatCard(label: 'Parents', value: '$parents',
+                    icon: Icons.family_restroom_rounded, color: AppColors.buttonBlue)),
+                const SizedBox(width: 12),
+                Expanded(child: _StatCard(label: 'Nounous', value: '$nounous',
+                    icon: Icons.child_care_rounded, color: AppColors.primaryPink)),
+              ]),
+              const SizedBox(height: 12),
+              Row(children: [
+                Expanded(child: _StatCard(label: 'Total users', value: '${users.length}',
+                    icon: Icons.people_rounded, color: Colors.teal)),
+                const SizedBox(width: 12),
+                Expanded(child: _StatCard(label: 'Actifs', value: '${users.length}',
+                    icon: Icons.verified_rounded, color: Colors.green)),
+              ]),
+            ]);
+          },
+        ),
+        const SizedBox(height: 12),
+        StreamBuilder<QuerySnapshot>(
+          stream: FirebaseFirestore.instance.collection('demandes').snapshots(),
+          builder: (_, snap) {
+            final all = snap.data?.docs ?? [];
+            final enAttente = all.where((d) => (d.data() as Map)['statut'] == 'en_attente').length;
+            final acceptees = all.where((d) => (d.data() as Map)['statut'] == 'acceptée').length;
+            return Row(children: [
+              Expanded(child: _StatCard(label: 'Total RDV', value: '${all.length}',
+                  icon: Icons.calendar_month_rounded, color: Colors.purple)),
+              const SizedBox(width: 12),
+              Expanded(child: _StatCard(label: 'En attente', value: '$enAttente',
+                  icon: Icons.hourglass_empty_rounded, color: Colors.orange)),
+              const SizedBox(width: 12),
+              Expanded(child: _StatCard(label: 'Acceptés', value: '$acceptees',
+                  icon: Icons.check_circle_rounded, color: Colors.green)),
+            ]);
+          },
+        ),
+        const SizedBox(height: 12),
+        StreamBuilder<QuerySnapshot>(
+          stream: FirebaseFirestore.instance.collection('paiements').snapshots(),
+          builder: (_, snap) {
+            final paiements = snap.data?.docs ?? [];
+            double total = 0;
+            for (final p in paiements) {
+              total += ((p.data() as Map)['montantTotal'] ?? 0).toDouble();
+            }
+            return Row(children: [
+              Expanded(child: _StatCard(label: 'Paiements', value: '${paiements.length}',
+                  icon: Icons.payments_rounded, color: Colors.amber)),
+              const SizedBox(width: 12),
+              Expanded(child: _StatCard(label: 'Total DA', value: '${total.toInt()}',
+                  icon: Icons.account_balance_wallet_rounded, color: Colors.teal)),
+            ]);
+          },
+        ),
+        const SizedBox(height: 20),
+
+        // Derniers utilisateurs inscrits
+        const Text('Dernières inscriptions',
+            style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: Colors.white)),
+        const SizedBox(height: 10),
+        StreamBuilder<QuerySnapshot>(
+          stream: FirebaseFirestore.instance.collection('users')
+              .orderBy('createdAt', descending: true).limit(5).snapshots(),
+          builder: (_, snap) {
+            if (!snap.hasData) return const SizedBox.shrink();
+            return Column(children: snap.data!.docs.map((doc) {
+              final d = doc.data() as Map<String, dynamic>;
+              return _UserMiniCard(data: d, uid: doc.id);
+            }).toList());
+          },
+        ),
+        const SizedBox(height: 30),
+      ],
+    );
+  }
+}
+
+class _StatCard extends StatelessWidget {
+  final String label, value; final IconData icon; final Color color;
+  const _StatCard({required this.label, required this.value, required this.icon, required this.color});
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.all(16),
+    decoration: BoxDecoration(
+      color: Colors.white.withOpacity(0.07),
+      borderRadius: BorderRadius.circular(16),
+      border: Border.all(color: color.withOpacity(0.3)),
+    ),
+    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Container(width: 36, height: 36,
+          decoration: BoxDecoration(color: color.withOpacity(0.15), borderRadius: BorderRadius.circular(10)),
+          child: Icon(icon, color: color, size: 18)),
+      const SizedBox(height: 10),
+      Text(value, style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900, color: color)),
+      Text(label, style: const TextStyle(fontSize: 11, color: Colors.white54, fontWeight: FontWeight.w600)),
+    ]),
+  );
+}
+
+class _UserMiniCard extends StatelessWidget {
+  final Map<String, dynamic> data; final String uid;
+  const _UserMiniCard({required this.data, required this.uid});
+  @override
+  Widget build(BuildContext context) {
+    final role = data['role'] ?? '';
+    final color = role == 'Babysitter' ? AppColors.primaryPink : AppColors.buttonBlue;
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.05),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.white.withOpacity(0.1)),
+      ),
+      child: Row(children: [
+        Container(width: 36, height: 36,
+            decoration: BoxDecoration(color: color.withOpacity(0.2), shape: BoxShape.circle),
+            child: Center(child: Text(
+              '${(data['prenom'] ?? ' ')[0]}${(data['nom'] ?? ' ')[0]}'.toUpperCase(),
+              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: color),
+            ))),
+        const SizedBox(width: 10),
+        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text('${data['prenom'] ?? ''} ${data['nom'] ?? ''}',
+              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Colors.white)),
+          Text(data['email'] ?? '',
+              style: const TextStyle(fontSize: 11, color: Colors.white38), maxLines: 1, overflow: TextOverflow.ellipsis),
+        ])),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+          decoration: BoxDecoration(color: color.withOpacity(0.2), borderRadius: BorderRadius.circular(20)),
+          child: Text(role, style: TextStyle(fontSize: 10, color: color, fontWeight: FontWeight.w700)),
+        ),
+      ]),
+    );
+  }
+}
+
+// ════════════════════════════════════════════════
+// ONGLET 2 — DOCUMENTS (avec IA)
+// ════════════════════════════════════════════════
+class _DocumentsTab extends StatelessWidget {
+  const _DocumentsTab();
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<QuerySnapshot>(
+      stream: FirebaseFirestore.instance.collection('users')
+          .where('role', isEqualTo: 'Babysitter').snapshots(),
+      builder: (_, snap) {
+        if (!snap.hasData) return const Center(child: CircularProgressIndicator(color: AppColors.primaryPink));
+
+        // Filtrer nounous avec au moins un doc en attente
+        final docsEnAttente = snap.data!.docs.where((doc) {
+          final d = doc.data() as Map<String, dynamic>;
+          return d['diplomePdfStatut'] == 'en_attente' ||
+              d['cvStatut'] == 'en_attente' ||
+              d['cniStatut'] == 'en_attente';
+        }).toList();
+
+        if (docsEnAttente.isEmpty) {
+          return Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+            Container(width: 80, height: 80,
+                decoration: BoxDecoration(color: Colors.green.withOpacity(0.15), shape: BoxShape.circle),
+                child: const Icon(Icons.check_circle_rounded, color: Colors.green, size: 40)),
+            const SizedBox(height: 16),
+            const Text('Tout est vérifié !',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: Colors.white)),
+            const SizedBox(height: 8),
+            const Text('Aucun document en attente de vérification',
+                style: TextStyle(fontSize: 13, color: Colors.white54)),
+          ]));
+        }
+
+        return ListView.builder(
+          padding: const EdgeInsets.symmetric(horizontal: 20),
+          itemCount: docsEnAttente.length,
+          itemBuilder: (_, i) {
+            final doc = docsEnAttente[i];
+            final d = doc.data() as Map<String, dynamic>;
+            return _NounouDocCard(uid: doc.id, data: d);
+          },
+        );
+      },
+    );
+  }
+}
+
+class _NounouDocCard extends StatefulWidget {
+  final String uid; final Map<String, dynamic> data;
+  const _NounouDocCard({required this.uid, required this.data});
+  @override
+  State<_NounouDocCard> createState() => _NounouDocCardState();
+}
+
+class _NounouDocCardState extends State<_NounouDocCard> {
+  bool _expanded = false;
+  String _aiAnalysis = '';
+  bool _aiLoading = false;
+
+  Future<void> _analyzeWithAI(String docType, String base64Data, String fileName) async {
+    setState(() { _aiLoading = true; _aiAnalysis = ''; });
+    try {
+      final http = await _callClaudeAPI(docType, base64Data, fileName, widget.data);
+      setState(() => _aiAnalysis = http);
+    } catch (e) {
+      setState(() => _aiAnalysis = 'Erreur analyse: $e');
+    }
+    setState(() => _aiLoading = false);
+  }
+
+  Future<String> _callClaudeAPI(String docType, String base64Data, String fileName,
+      Map<String, dynamic> userData) async {
+    final prenom = userData['prenom'] ?? '';
+    final nom = userData['nom'] ?? '';
+    final isImage = fileName.toLowerCase().endsWith('.jpg') ||
+        fileName.toLowerCase().endsWith('.jpeg') ||
+        fileName.toLowerCase().endsWith('.png');
+    final mimeType = isImage ? 'image/jpeg' : 'application/pdf';
+    final prompt = _buildPrompt(docType, prenom, nom);
+
+    try {
+      final uri = Uri.parse('https://api.anthropic.com/v1/messages');
+      final bodyMap = <String, dynamic>{
+        'model': 'claude-sonnet-4-6',
+        'max_tokens': 500,
+        'messages': [
+          {
+            'role': 'user',
+            'content': isImage
+                ? [
+              {'type': 'image', 'source': {'type': 'base64', 'media_type': mimeType, 'data': base64Data}},
+              {'type': 'text', 'text': prompt},
+            ]
+                : [
+              {'type': 'text', 'text': prompt},
+            ],
+          }
+        ],
+      };
+      return await _postHttp(uri, bodyMap);
+    } catch (e) {
+      return '{"valide": false, "confiance": 0, "recommandation": "Vérification manuelle", "motif": "Erreur: $e"}';
+    }
+  }
+
+  String _buildPrompt(String docType, String prenom, String nom) {
+    switch (docType) {
+      case 'diplome':
+        return '''Analyse ce document comme assistant de vérification pour NounouGo.
+Profil: $prenom $nom (babysitter)
+Type attendu: Diplôme (CAP Petite Enfance, Licence, etc.)
+
+Vérifie:
+1. Est-ce bien un diplôme/certificat officiel ?
+2. Le nom sur le document correspond-il à $prenom $nom ?
+3. Le diplôme est-il pertinent pour la garde d'enfants ?
+4. Y a-t-il des signes de falsification ?
+
+Réponds en JSON: {"valide": true/false, "confiance": 0-100, "type_doc": "...", "nom_detecte": "...", "recommandation": "Valider/Refuser/Vérification manuelle", "motif": "..."}''';
+      case 'cv':
+        return '''Analyse ce CV pour NounouGo.
+Profil: $prenom $nom (babysitter)
+
+Vérifie:
+1. Est-ce bien un CV professionnel ?
+2. Y a-t-il une expérience en garde d'enfants ?
+3. Le document semble-t-il authentique ?
+
+Réponds en JSON: {"valide": true/false, "confiance": 0-100, "experience_enfants": true/false, "recommandation": "Valider/Refuser/Vérification manuelle", "motif": "..."}''';
+      default: // cni
+        return '''Analyse cette pièce d'identité pour NounouGo.
+Profil attendu: $prenom $nom
+
+Vérifie:
+1. Est-ce bien une pièce d'identité officielle (CNI, passeport) ?
+2. Le nom correspond-il à $prenom $nom ?
+3. Le document est-il lisible et non expiré (si visible) ?
+4. Y a-t-il des signes de falsification ?
+
+Réponds en JSON: {"valide": true/false, "confiance": 0-100, "type_doc": "CNI/Passeport/Autre", "nom_detecte": "...", "recommandation": "Valider/Refuser/Vérification manuelle", "motif": "..."}''';
+    }
+  }
+
+  Future<String> _postHttp(Uri uri, Map<String, dynamic> body) async {
+    // Utilise dart:io HttpClient (pas besoin du package http)
+    final client = HttpClient();
+    final request = await client.postUrl(uri);
+    request.headers.set('content-type', 'application/json');
+    request.headers.set('x-api-key', ''); // Clé gérée par le proxy Anthropic
+    request.headers.set('anthropic-version', '2023-06-01');
+    request.write(jsonEncode(body));
+    final response = await request.close();
+    final respBody = await response.transform(utf8.decoder).join();
+    final decoded = jsonDecode(respBody) as Map<String, dynamic>;
+    final content = decoded['content'] as List?;
+    if (content != null && content.isNotEmpty) {
+      return (content[0] as Map)['text'] as String? ?? '';
+    }
+    return '{"recommandation": "Vérification manuelle", "motif": "Réponse inattendue"}';
+  }
+
+  Future<void> _updateDocStatut(String docType, String statut) async {
+    final field = docType == 'diplome' ? 'diplomePdfStatut'
+        : docType == 'cv' ? 'cvStatut' : 'cniStatut';
+    await FirebaseFirestore.instance.collection('users').doc(widget.uid).update({field: statut});
+
+    // Notifier la nounou
+    final notifMsg = statut == 'validé'
+        ? 'Votre $docType a ete valide ✅'
+        : 'Votre $docType a ete refuse. Veuillez soumettre un nouveau document.';
+    await FirebaseFirestore.instance.collection('notifications').add({
+      'destinataireUid': widget.uid,
+      'titre': statut == 'validé' ? 'Document validé ✅' : 'Document refusé ❌',
+      'message': notifMsg,
+      'type': statut == 'validé' ? 'document_valide' : 'document_refuse',
+      'lu': false,
+      'createdAt': FieldValue.serverTimestamp(),
+    });
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(statut == 'validé' ? '✅ Document validé' : '❌ Document refusé'),
+        backgroundColor: statut == 'validé' ? Colors.green : Colors.red,
+        behavior: SnackBarBehavior.floating,
+      ));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final d = widget.data;
+    final prenom = d['prenom'] ?? '';
+    final nom = d['nom'] ?? '';
+
+    final docs = <Map<String, dynamic>>[];
+    if (d['diplomePdfStatut'] == 'en_attente') docs.add({
+      'type': 'diplome', 'label': 'Diplôme', 'icon': Icons.school_rounded,
+      'color': AppColors.primaryPink, 'base64': d['diplomePdfBase64'],
+      'name': d['diplomePdfName'] ?? 'diplome.pdf',
+    });
+    if (d['cvStatut'] == 'en_attente') docs.add({
+      'type': 'cv', 'label': 'CV', 'icon': Icons.description_rounded,
+      'color': AppColors.buttonBlue, 'base64': d['cvBase64'],
+      'name': d['cvName'] ?? 'cv.pdf',
+    });
+    if (d['cniStatut'] == 'en_attente') docs.add({
+      'type': 'cni', 'label': "Carte d'identité", 'icon': Icons.badge_rounded,
+      'color': Colors.teal, 'base64': d['cniBase64'],
+      'name': d['cniName'] ?? 'cni.pdf',
+    });
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 14),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.07),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: Colors.orange.withOpacity(0.3)),
+      ),
+      child: Column(children: [
+        // Header
+        GestureDetector(
+          onTap: () => setState(() => _expanded = !_expanded),
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Row(children: [
+              Container(width: 44, height: 44,
+                  decoration: BoxDecoration(
+                      color: AppColors.primaryPink.withOpacity(0.2), shape: BoxShape.circle),
+                  child: Center(child: Text('${prenom.isNotEmpty ? prenom[0] : ''}${nom.isNotEmpty ? nom[0] : ''}'.toUpperCase(),
+                      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: AppColors.primaryPink)))),
+              const SizedBox(width: 12),
+              Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text('$prenom $nom', style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: Colors.white)),
+                Text('${docs.length} document(s) en attente',
+                    style: TextStyle(fontSize: 12, color: Colors.orange.shade300)),
+              ])),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                    color: Colors.orange.withOpacity(0.15), borderRadius: BorderRadius.circular(20)),
+                child: const Text('⏳ En attente',
+                    style: TextStyle(fontSize: 11, color: Colors.orange, fontWeight: FontWeight.w700)),
+              ),
+              const SizedBox(width: 8),
+              Icon(_expanded ? Icons.keyboard_arrow_up : Icons.keyboard_arrow_down,
+                  color: Colors.white54, size: 20),
+            ]),
+          ),
+        ),
+
+        // Documents expandable
+        if (_expanded) ...[
+          const Divider(color: Colors.white12, height: 1),
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(children: [
+              ...docs.map((doc) => _DocReviewCard(
+                docInfo: doc,
+                userData: d,
+                onAnalyze: () => _analyzeWithAI(doc['type'], doc['base64'] ?? '', doc['name']),
+                aiLoading: _aiLoading,
+                aiResult: _aiAnalysis,
+                onValidate: () => _updateDocStatut(doc['type'], 'validé'),
+                onRefuse: () => _updateDocStatut(doc['type'], 'refusé'),
+              )).toList(),
+              const SizedBox(height: 4),
+              const Divider(color: Colors.white12),
+              const SizedBox(height: 8),
+              _ConfirmNounouButton(uid: widget.uid, data: d),
+            ]),
+          ),
+        ],
+      ]),
+    );
+  }
+}
+
+class _DocReviewCard extends StatelessWidget {
+  final Map<String, dynamic> docInfo, userData;
+  final VoidCallback onAnalyze, onValidate, onRefuse;
+  final bool aiLoading;
+  final String aiResult;
+
+  const _DocReviewCard({
+    required this.docInfo, required this.userData,
+    required this.onAnalyze, required this.onValidate, required this.onRefuse,
+    required this.aiLoading, required this.aiResult,
+  });
+
+  Map<String, dynamic>? _parseAiResult() {
+    if (aiResult.isEmpty) return null;
+    try {
+      final clean = aiResult.replaceAll('```json', '').replaceAll('```', '').trim();
+      return json.decode(clean) as Map<String, dynamic>;
+    } catch (_) { return null; }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final color = docInfo['color'] as Color;
+    final aiData = _parseAiResult();
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.06),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: color.withOpacity(0.2)),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Icon(docInfo['icon'] as IconData, color: color, size: 18),
+          const SizedBox(width: 8),
+          Text(docInfo['label'] as String,
+              style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: color)),
+          const Spacer(),
+          Text(docInfo['name'] as String,
+              style: const TextStyle(fontSize: 11, color: Colors.white38),
+              maxLines: 1, overflow: TextOverflow.ellipsis),
+        ]),
+
+        const SizedBox(height: 12),
+
+        // Bouton analyser IA
+        GestureDetector(
+          onTap: aiLoading ? null : onAnalyze,
+          child: Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(vertical: 12),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(colors: [
+                Colors.purple.withOpacity(0.3), Colors.blue.withOpacity(0.3)]),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: Colors.purple.withOpacity(0.4)),
+            ),
+            child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+              aiLoading
+                  ? const SizedBox(width: 16, height: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2, color: Colors.purple))
+                  : const Icon(Icons.auto_awesome_rounded, color: Colors.purple, size: 16),
+              const SizedBox(width: 8),
+              Text(aiLoading ? "Analyse en cours..." : "🤖 Analyser avec l'IA",
+                  style: const TextStyle(fontSize: 13, color: Colors.white, fontWeight: FontWeight.w700)),
+            ]),
+          ),
+        ),
+
+        // Résultat IA
+        if (aiData != null) ...[
+          const SizedBox(height: 10),
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.black.withOpacity(0.3),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: Colors.purple.withOpacity(0.3)),
+            ),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Row(children: [
+                const Icon(Icons.psychology_rounded, color: Colors.purple, size: 16),
+                const SizedBox(width: 6),
+                const Text('Analyse IA', style: TextStyle(fontSize: 12, color: Colors.purple, fontWeight: FontWeight.w800)),
+                const Spacer(),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: _getRecommColor(aiData['recommandation'] ?? '').withOpacity(0.2),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Text(aiData['recommandation'] ?? '',
+                      style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800,
+                          color: _getRecommColor(aiData['recommandation'] ?? ''))),
+                ),
+              ]),
+              const SizedBox(height: 8),
+              if (aiData['confiance'] != null)
+                _AiBar(label: 'Confiance', value: (aiData['confiance'] as num).toDouble()),
+              const SizedBox(height: 6),
+              if (aiData['motif'] != null)
+                Text(aiData['motif'] as String,
+                    style: const TextStyle(fontSize: 12, color: Colors.white70, height: 1.4)),
+            ]),
+          ),
+        ],
+
+        if (aiResult.isNotEmpty && aiData == null) ...[
+          const SizedBox(height: 8),
+          Text(aiResult, style: const TextStyle(fontSize: 11, color: Colors.white54)),
+        ],
+
+        const SizedBox(height: 12),
+
+        // Boutons Valider / Refuser
+        Row(children: [
+          Expanded(child: GestureDetector(
+            onTap: onRefuse,
+            child: Container(
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              decoration: BoxDecoration(
+                color: Colors.red.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.red.withOpacity(0.3)),
+              ),
+              child: const Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                Icon(Icons.close_rounded, color: Colors.red, size: 16),
+                SizedBox(width: 6),
+                Text('Refuser', style: TextStyle(fontSize: 13, color: Colors.red, fontWeight: FontWeight.w700)),
+              ]),
+            ),
+          )),
+          const SizedBox(width: 10),
+          Expanded(child: GestureDetector(
+            onTap: onValidate,
+            child: Container(
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              decoration: BoxDecoration(
+                color: Colors.green.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.green.withOpacity(0.3)),
+              ),
+              child: const Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                Icon(Icons.check_rounded, color: Colors.green, size: 16),
+                SizedBox(width: 6),
+                Text('Valider', style: TextStyle(fontSize: 13, color: Colors.green, fontWeight: FontWeight.w700)),
+              ]),
+            ),
+          )),
+        ]),
+      ]),
+    );
+  }
+
+  Color _getRecommColor(String r) {
+    if (r.contains('Valider')) return Colors.green;
+    if (r.contains('Refuser')) return Colors.red;
+    return Colors.orange;
+  }
+}
+
+class _AiBar extends StatelessWidget {
+  final String label; final double value;
+  const _AiBar({required this.label, required this.value});
+  @override
+  Widget build(BuildContext context) => Column(children: [
+    Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+      Text(label, style: const TextStyle(fontSize: 11, color: Colors.white54)),
+      Text('${value.toInt()}%', style: const TextStyle(fontSize: 11, color: Colors.white70, fontWeight: FontWeight.w700)),
+    ]),
+    const SizedBox(height: 4),
+    ClipRRect(
+      borderRadius: BorderRadius.circular(4),
+      child: LinearProgressIndicator(
+        value: value / 100,
+        backgroundColor: Colors.white.withOpacity(0.1),
+        valueColor: AlwaysStoppedAnimation(
+            value >= 80 ? Colors.green : value >= 50 ? Colors.orange : Colors.red),
+        minHeight: 6,
+      ),
+    ),
+  ]);
+}
+
+// ════════════════════════════════════════════════
+// ONGLET 3 — UTILISATEURS
+// ════════════════════════════════════════════════
+class _UsersTab extends StatefulWidget {
+  const _UsersTab();
+  @override
+  State<_UsersTab> createState() => _UsersTabState();
+}
+
+class _UsersTabState extends State<_UsersTab> {
+  String _filter = 'Tous';
+  String _search = '';
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(children: [
+      // Filtre + Recherche
+      Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 20),
+        child: Column(children: [
+          // Barre de recherche
+          Container(
+            height: 44,
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.08),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: Colors.white.withOpacity(0.1)),
+            ),
+            child: TextField(
+              onChanged: (v) => setState(() => _search = v.toLowerCase()),
+              style: const TextStyle(color: Colors.white, fontSize: 14),
+              decoration: const InputDecoration(
+                hintText: 'Rechercher un utilisateur...',
+                hintStyle: TextStyle(color: Colors.white38, fontSize: 13),
+                prefixIcon: Icon(Icons.search_rounded, color: Colors.white38, size: 18),
+                border: InputBorder.none,
+                contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+              ),
+            ),
+          ),
+          const SizedBox(height: 10),
+          // Filtres
+          Row(children: ['Tous', 'Parent', 'Babysitter', 'Bloqué'].map((f) =>
+              Padding(
+                padding: const EdgeInsets.only(right: 8),
+                child: GestureDetector(
+                  onTap: () => setState(() => _filter = f),
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 200),
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: _filter == f ? AppColors.primaryPink : Colors.white.withOpacity(0.08),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Text(f, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700,
+                        color: _filter == f ? Colors.white : Colors.white54)),
+                  ),
+                ),
+              )
+          ).toList()),
+        ]),
+      ),
+      const SizedBox(height: 12),
+
+      // Liste
+      Expanded(
+        child: StreamBuilder<QuerySnapshot>(
+          stream: FirebaseFirestore.instance.collection('users').snapshots(),
+          builder: (_, snap) {
+            if (!snap.hasData) return const Center(child: CircularProgressIndicator(color: AppColors.primaryPink));
+
+            var users = snap.data!.docs.where((doc) {
+              final d = doc.data() as Map<String, dynamic>;
+              final role = d['role'] ?? '';
+              final bloque = d['bloque'] ?? false;
+              final nom = '${d['prenom'] ?? ''} ${d['nom'] ?? ''} ${d['email'] ?? ''}'.toLowerCase();
+
+              if (_search.isNotEmpty && !nom.contains(_search)) return false;
+              if (_filter == 'Bloqué') return bloque;
+              if (_filter == 'Tous') return true;
+              return role == _filter;
+            }).toList();
+
+            return ListView.builder(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              itemCount: users.length,
+              itemBuilder: (_, i) {
+                final doc = users[i];
+                final d = doc.data() as Map<String, dynamic>;
+                return _UserAdminCard(uid: doc.id, data: d);
+              },
+            );
+          },
+        ),
+      ),
+    ]);
+  }
+}
+
+class _UserAdminCard extends StatelessWidget {
+  final String uid; final Map<String, dynamic> data;
+  const _UserAdminCard({required this.uid, required this.data});
+
+  Future<void> _toggleBlock(BuildContext context) async {
+    final bloque = data['bloque'] ?? false;
+    await FirebaseFirestore.instance.collection('users').doc(uid).update({'bloque': !bloque});
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(bloque ? '🔓 Utilisateur débloqué' : '🔒 Utilisateur bloqué'),
+        backgroundColor: bloque ? Colors.green : Colors.orange,
+        behavior: SnackBarBehavior.floating,
+      ));
+    }
+  }
+
+  Future<void> _deleteUser(BuildContext context) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        backgroundColor: const Color(0xFF1A1A2E),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text('Supprimer ?', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800)),
+        content: Text('Supprimer ${data['prenom']} ${data['nom']} définitivement ?',
+            style: const TextStyle(color: Colors.white70)),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false),
+              child: const Text('Annuler', style: TextStyle(color: Colors.white54))),
+          TextButton(onPressed: () => Navigator.pop(context, true),
+              child: const Text('Supprimer', style: TextStyle(color: Colors.red, fontWeight: FontWeight.w800))),
+        ],
+      ),
+    );
+    if (confirmed == true) {
+      await FirebaseFirestore.instance.collection('users').doc(uid).delete();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final role = data['role'] ?? '';
+    final bloque = data['bloque'] ?? false;
+    final color = role == 'Babysitter' ? AppColors.primaryPink : AppColors.buttonBlue;
+
+    // Badges documents validés
+    final diploOk = data['diplomePdfStatut'] == 'validé';
+    final cvOk = data['cvStatut'] == 'validé';
+    final cniOk = data['cniStatut'] == 'validé';
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: bloque ? Colors.red.withOpacity(0.05) : Colors.white.withOpacity(0.06),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+            color: bloque ? Colors.red.withOpacity(0.3) : Colors.white.withOpacity(0.08)),
+      ),
+      child: Column(children: [
+        Row(children: [
+          // Avatar
+          Container(width: 44, height: 44,
+              decoration: BoxDecoration(
+                  color: color.withOpacity(bloque ? 0.1 : 0.2), shape: BoxShape.circle),
+              child: Center(child: Text(
+                '${(data['prenom'] ?? ' ')[0]}${(data['nom'] ?? ' ')[0]}'.toUpperCase(),
+                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800,
+                    color: bloque ? Colors.red : color),
+              ))),
+          const SizedBox(width: 12),
+          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(children: [
+              Text('${data['prenom'] ?? ''} ${data['nom'] ?? ''}',
+                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800,
+                      color: bloque ? Colors.red.shade300 : Colors.white)),
+              if (bloque) ...[
+                const SizedBox(width: 6),
+                Container(padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(color: Colors.red.withOpacity(0.2), borderRadius: BorderRadius.circular(20)),
+                    child: const Text('Bloqué', style: TextStyle(fontSize: 9, color: Colors.red, fontWeight: FontWeight.w800))),
+              ],
+            ]),
+            Text(data['email'] ?? '', style: const TextStyle(fontSize: 11, color: Colors.white38),
+                maxLines: 1, overflow: TextOverflow.ellipsis),
+            const SizedBox(height: 4),
+            Row(children: [
+              Container(padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(color: color.withOpacity(0.15), borderRadius: BorderRadius.circular(20)),
+                  child: Text(role, style: TextStyle(fontSize: 9, color: color, fontWeight: FontWeight.w700))),
+              if (role == 'Babysitter') ...[
+                const SizedBox(width: 4),
+                if (diploOk) _DocBadge(label: 'Dip', color: Colors.green),
+                if (cvOk) ...[const SizedBox(width: 4), _DocBadge(label: 'CV', color: Colors.blue)],
+                if (cniOk) ...[const SizedBox(width: 4), _DocBadge(label: 'CNI', color: Colors.teal)],
+              ],
+            ]),
+          ])),
+          // Actions
+          Column(children: [
+            GestureDetector(
+              onTap: () => _toggleBlock(context),
+              child: Container(
+                padding: const EdgeInsets.all(7),
+                decoration: BoxDecoration(
+                  color: bloque ? Colors.green.withOpacity(0.15) : Colors.orange.withOpacity(0.15),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Icon(bloque ? Icons.lock_open_rounded : Icons.block_rounded,
+                    color: bloque ? Colors.green : Colors.orange, size: 16),
+              ),
+            ),
+            const SizedBox(height: 6),
+            GestureDetector(
+              onTap: () => _deleteUser(context),
+              child: Container(
+                padding: const EdgeInsets.all(7),
+                decoration: BoxDecoration(
+                    color: Colors.red.withOpacity(0.15), borderRadius: BorderRadius.circular(8)),
+                child: const Icon(Icons.delete_outline_rounded, color: Colors.red, size: 16),
+              ),
+            ),
+          ]),
+        ]),
+      ]),
+    );
+  }
+}
+
+class _DocBadge extends StatelessWidget {
+  final String label; final Color color;
+  const _DocBadge({required this.label, required this.color});
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+    decoration: BoxDecoration(color: color.withOpacity(0.15), borderRadius: BorderRadius.circular(20)),
+    child: Text('✅$label', style: TextStyle(fontSize: 8, color: color, fontWeight: FontWeight.w700)),
+  );
+}
+
+// ── Bouton confirmation autorisation travail nounou ──
+class _ConfirmNounouButton extends StatelessWidget {
+  final String uid;
+  final Map<String, dynamic> data;
+  const _ConfirmNounouButton({required this.uid, required this.data});
+
+  Future<void> _confirm(BuildContext context, bool autoriser) async {
+    await FirebaseFirestore.instance.collection('users').doc(uid).update({
+      'autoriseeATravail': autoriser,
+    });
+
+    // Notification à la nounou
+    final msg = autoriser
+        ? "🎉 Félicitations ! Votre profil a été vérifié et vous êtes autorisée à travailler sur NounouGo."
+        : "Votre demande d'autorisation a ete refusee. Contactez le support.";
+    await FirebaseFirestore.instance.collection('notifications').add({
+      'destinataireUid': uid,
+      'titre': autoriser ? '✅ Profil autorise' : '❌ Autorisation refusee',
+      'message': msg,
+      'type': autoriser ? 'autorisation_accordee' : 'autorisation_refusee',
+      'lu': false,
+      'createdAt': FieldValue.serverTimestamp(),
+    });
+
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(autoriser
+            ? '✅ Nounou autorisée à travailler !'
+            : '❌ Autorisation refusée'),
+        backgroundColor: autoriser ? Colors.green : Colors.red,
+        behavior: SnackBarBehavior.floating,
+      ));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final autorisee = data['autoriseeATravail'] ?? false;
+
+    return Column(children: [
+      // Statut actuel
+      Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 14),
+        decoration: BoxDecoration(
+          color: autorisee
+              ? Colors.green.withOpacity(0.1)
+              : Colors.orange.withOpacity(0.1),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+              color: autorisee
+                  ? Colors.green.withOpacity(0.3)
+                  : Colors.orange.withOpacity(0.3)),
+        ),
+        child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+          Icon(
+            autorisee ? Icons.verified_rounded : Icons.pending_rounded,
+            color: autorisee ? Colors.green : Colors.orange,
+            size: 18,
+          ),
+          const SizedBox(width: 8),
+          Text(
+            autorisee
+                ? 'Nounou autorisée à travailler'
+                : "En attente d'autorisation",
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+              color: autorisee ? Colors.green : Colors.orange,
+            ),
+          ),
+        ]),
+      ),
+      const SizedBox(height: 10),
+
+      // Boutons action
+      Row(children: [
+        if (autorisee)
+          Expanded(
+            child: GestureDetector(
+              onTap: () => _confirm(context, false),
+              child: Container(
+                padding: const EdgeInsets.symmetric(vertical: 13),
+                decoration: BoxDecoration(
+                  color: Colors.red.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.red.withOpacity(0.4)),
+                ),
+                child: const Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                  Icon(Icons.block_rounded, color: Colors.red, size: 18),
+                  SizedBox(width: 8),
+                  Text('Révoquer autorisation',
+                      style: TextStyle(fontSize: 13, color: Colors.red, fontWeight: FontWeight.w800)),
+                ]),
+              ),
+            ),
+          )
+        else ...[
+          Expanded(
+            child: GestureDetector(
+              onTap: () => _confirm(context, false),
+              child: Container(
+                padding: const EdgeInsets.symmetric(vertical: 13),
+                decoration: BoxDecoration(
+                  color: Colors.red.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.red.withOpacity(0.3)),
+                ),
+                child: const Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                  Icon(Icons.close_rounded, color: Colors.red, size: 18),
+                  SizedBox(width: 6),
+                  Text('Refuser',
+                      style: TextStyle(fontSize: 13, color: Colors.red, fontWeight: FontWeight.w800)),
+                ]),
+              ),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            flex: 2,
+            child: GestureDetector(
+              onTap: () => _confirm(context, true),
+              child: Container(
+                padding: const EdgeInsets.symmetric(vertical: 13),
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                      colors: [Color(0xFF11998E), Color(0xFF38EF7D)]),
+                  borderRadius: BorderRadius.circular(12),
+                  boxShadow: [BoxShadow(
+                      color: Colors.green.withOpacity(0.3),
+                      blurRadius: 8, offset: const Offset(0, 3))],
+                ),
+                child: const Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                  Icon(Icons.check_circle_rounded, color: Colors.white, size: 18),
+                  SizedBox(width: 8),
+                  Text('✅ Confirmer & Autoriser',
+                      style: TextStyle(fontSize: 13, color: Colors.white, fontWeight: FontWeight.w800)),
+                ]),
+              ),
+            ),
+          ),
+        ],
+      ]),
+    ]);
+  }
+}

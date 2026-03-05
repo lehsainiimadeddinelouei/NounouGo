@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'admin_screen.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:image_picker/image_picker.dart';
@@ -673,6 +674,36 @@ class _ParentProfileScreenState extends State<ParentProfileScreen>
                             ]),
                           ),
                         ),
+                        // ── Bouton Admin (visible uniquement pour l'admin) ──
+                        if (FirebaseAuth.instance.currentUser?.email == 'lehsainiimadeddinelouei@gmail.com') ...[
+                          const SizedBox(height: 12),
+                          GestureDetector(
+                            onTap: () => Navigator.push(context, PageRouteBuilder(
+                              pageBuilder: (_, __, ___) => const AdminScreen(),
+                              transitionsBuilder: (_, anim, __, child) =>
+                                  FadeTransition(opacity: anim, child: child),
+                              transitionDuration: const Duration(milliseconds: 300),
+                            )),
+                            child: Container(
+                              width: double.infinity,
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                              decoration: BoxDecoration(
+                                gradient: const LinearGradient(
+                                  colors: [Color(0xFF1A1A2E), Color(0xFF0F3460)]),
+                                borderRadius: BorderRadius.circular(14),
+                                boxShadow: [BoxShadow(
+                                  color: Colors.black.withOpacity(0.3),
+                                  blurRadius: 10, offset: const Offset(0, 4))],
+                              ),
+                              child: const Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                                Icon(Icons.admin_panel_settings_rounded, color: Colors.white, size: 20),
+                                SizedBox(width: 10),
+                                Text('Panel Admin',
+                                    style: TextStyle(fontSize: 15, color: Colors.white, fontWeight: FontWeight.w800)),
+                              ]),
+                            ),
+                          ),
+                        ],
                         const SizedBox(height: 40),
                       ]),
                     ),

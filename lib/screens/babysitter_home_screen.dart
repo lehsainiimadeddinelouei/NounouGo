@@ -9,6 +9,7 @@ import 'demandes_screen.dart';
 import 'conversations_screen.dart';
 import 'payment_screen.dart';
 import 'historique_screen.dart';
+import 'babysitter_edit_profile_screen.dart';
 
 class BabysitterHomeScreen extends StatefulWidget {
   const BabysitterHomeScreen({super.key});
@@ -36,6 +37,7 @@ class _BabysitterHomeScreenState extends State<BabysitterHomeScreen> {
     if (doc.exists && mounted) {
       final data = doc.data()!;
       final profilComplet = data['profilComplet'] ?? false;
+      final autorisee = data['autoriseeATravail'] ?? false;
       if (!profilComplet && mounted) {
         Navigator.pushReplacement(context, PageRouteBuilder(
           pageBuilder: (_, __, ___) => const BabysitterSetupScreen(),
@@ -239,6 +241,7 @@ class _ProfilTab extends StatelessWidget {
     final diplomes = List<String>.from(data['diplomes'] ?? []);
     final competences = List<String>.from(data['competences'] ?? []);
     final disponibilites = List<String>.from(data['disponibilites'] ?? []);
+    final autorisee = data['autoriseeATravail'] ?? false;
 
     return Container(
       decoration: const BoxDecoration(
@@ -268,6 +271,30 @@ class _ProfilTab extends StatelessWidget {
                 transitionsBuilder: (_, anim, __, child) => FadeTransition(opacity: anim, child: child),
                 transitionDuration: const Duration(milliseconds: 350),
               )),
+            ),
+            IconButton(
+              icon: const Icon(Icons.edit_rounded, color: Colors.white),
+              tooltip: 'Modifier le profil',
+              onPressed: () async {
+                // Recharger les données fraîches avant d'éditer
+                final doc = await FirebaseFirestore.instance
+                    .collection('users')
+                    .doc(FirebaseAuth.instance.currentUser!.uid)
+                    .get();
+                if (doc.exists) {
+                  final freshData = doc.data()!;
+                  freshData['uid'] = doc.id;
+                  if (context.mounted) {
+                    Navigator.push(context, PageRouteBuilder(
+                      pageBuilder: (_, __, ___) => BabysitterEditProfileScreen(data: freshData),
+                      transitionsBuilder: (_, anim, __, child) =>
+                          SlideTransition(position: Tween<Offset>(begin: const Offset(0, 1), end: Offset.zero)
+                              .animate(CurvedAnimation(parent: anim, curve: Curves.easeOutCubic)), child: child),
+                      transitionDuration: const Duration(milliseconds: 400),
+                    ));
+                  }
+                }
+              },
             ),
             IconButton(icon: const Icon(Icons.delete_forever_rounded, color: Colors.white70),
                 tooltip: 'Supprimer le compte', onPressed: onDelete),
@@ -306,6 +333,29 @@ class _ProfilTab extends StatelessWidget {
             ),
           ),
         ),
+        // Banner statut autorisation
+        SliverToBoxAdapter(child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+          child: Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: autorisee ? Colors.green.withOpacity(0.1) : Colors.orange.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: autorisee ? Colors.green.withOpacity(0.3) : Colors.orange.withOpacity(0.3)),
+            ),
+            child: Row(children: [
+              Icon(autorisee ? Icons.verified_rounded : Icons.pending_rounded,
+                  color: autorisee ? Colors.green : Colors.orange, size: 20),
+              const SizedBox(width: 10),
+              Expanded(child: Text(
+                autorisee ? '✅ Profil vérifié — Vous êtes autorisée à travailler'
+                    : "⏳ En attente de validation par l'administrateur",
+                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700,
+                    color: autorisee ? Colors.green.shade700 : Colors.orange.shade700),
+              )),
+            ]),
+          ),
+        )),
         SliverToBoxAdapter(
           child: Padding(
             padding: const EdgeInsets.all(20),

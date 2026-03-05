@@ -1,4 +1,6 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../theme/app_theme.dart';
@@ -25,6 +27,13 @@ class _BabysitterSetupScreenState extends State<BabysitterSetupScreen>
   final _experienceController = TextEditingController();
 
   final List<String> _diplomes = [];
+
+  // Documents PDF
+  String? _diplomePdfBase64;
+  String? _diplomePdfName;
+  String? _cniBase64;
+  String? _cniName;
+  bool _loadingPdf = false;
   final List<String> _competences = [];
   final List<String> _experiences = [];
   final Set<String> _disponibilites = {};
@@ -45,6 +54,40 @@ class _BabysitterSetupScreenState extends State<BabysitterSetupScreen>
     _animController = AnimationController(duration: const Duration(milliseconds: 400), vsync: this);
     _fadeAnim = CurvedAnimation(parent: _animController, curve: Curves.easeIn);
     _animController.forward();
+  }
+
+  Future<void> _pickPdf(String type) async {
+    setState(() => _loadingPdf = true);
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: type == 'cni' ? ['pdf', 'jpg', 'jpeg', 'png'] : ['pdf'],
+        withData: true,
+      );
+      if (result != null && result.files.single.bytes != null) {
+        final bytes = result.files.single.bytes!;
+        final base64str = base64Encode(bytes);
+        final name = result.files.single.name;
+        setState(() {
+          if (type == 'diplome') {
+            _diplomePdfBase64 = base64str;
+            _diplomePdfName = name;
+          } else {
+            _cniBase64 = base64str;
+            _cniName = name;
+          }
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('Erreur : \$e'),
+          backgroundColor: Colors.red,
+          behavior: SnackBarBehavior.floating,
+        ));
+      }
+    }
+    setState(() => _loadingPdf = false);
   }
 
   @override
@@ -80,6 +123,10 @@ class _BabysitterSetupScreenState extends State<BabysitterSetupScreen>
         'bio': _bioController.text.trim(),
         'prixHeure': int.tryParse(_prixController.text.trim()) ?? 0,
         'diplomes': _diplomes,
+        'diplomePdfBase64': _diplomePdfBase64,
+        'diplomePdfName': _diplomePdfName,
+        'cniBase64': _cniBase64,
+        'cniName': _cniName,
         'competences': _competences,
         'experiences': _experiences,
         'disponibilites': _disponibilites.toList(),
@@ -300,6 +347,39 @@ class _BabysitterSetupScreenState extends State<BabysitterSetupScreen>
       onRemove: () => _removeItem(_diplomes, e.key),
     )),
     if (_diplomes.isEmpty) _EmptyHint(text: 'Aucun diplôme ajouté'),
+    const SizedBox(height: 24),
+
+    // ── Documents officiels ──
+    const Text('Documents officiels', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: AppColors.textDark)),
+    const SizedBox(height: 6),
+    const Text('Optionnel, mais fortement recommandé pour inspirer confiance',
+        style: TextStyle(fontSize: 13, color: AppColors.textGrey)),
+    const SizedBox(height: 14),
+
+    // Diplôme PDF
+    _DocumentUploadCard(
+      title: 'Diplôme (PDF)',
+      subtitle: 'Licence, CAP Petite Enfance, etc.',
+      icon: Icons.school_rounded,
+      color: AppColors.primaryPink,
+      fileName: _diplomePdfName,
+      isLoading: _loadingPdf,
+      onTap: () => _pickPdf('diplome'),
+      onRemove: () => setState(() { _diplomePdfBase64 = null; _diplomePdfName = null; }),
+    ),
+    const SizedBox(height: 12),
+
+    // CNI
+    _DocumentUploadCard(
+      title: "Carte d'identité",
+      subtitle: 'PDF, JPG ou PNG acceptés',
+      icon: Icons.badge_rounded,
+      color: AppColors.buttonBlue,
+      fileName: _cniName,
+      isLoading: _loadingPdf,
+      onTap: () => _pickPdf('cni'),
+      onRemove: () => setState(() { _cniBase64 = null; _cniName = null; }),
+    ),
     const SizedBox(height: 20),
   ]);
 
@@ -425,4 +505,88 @@ class _EmptyHint extends StatelessWidget {
     decoration: BoxDecoration(color: AppColors.lightPink, borderRadius: BorderRadius.circular(12)),
     child: Text(text, style: const TextStyle(fontSize: 13, color: AppColors.textGrey), textAlign: TextAlign.center),
   );
+}
+
+// ── Widget carte document ──
+class _DocumentUploadCard extends StatelessWidget {
+  final String title, subtitle;
+  final IconData icon;
+  final Color color;
+  final String? fileName;
+  final bool isLoading;
+  final VoidCallback onTap, onRemove;
+
+  const _DocumentUploadCard({
+    required this.title, required this.subtitle,
+    required this.icon, required this.color,
+    required this.fileName, required this.isLoading,
+    required this.onTap, required this.onRemove,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final hasFile = fileName != null;
+    return GestureDetector(
+      onTap: hasFile ? null : onTap,
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: hasFile ? color.withOpacity(0.05) : Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: hasFile ? color.withOpacity(0.4) : Colors.grey.withOpacity(0.2),
+            width: hasFile ? 1.5 : 1,
+          ),
+          boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 10)],
+        ),
+        child: Row(children: [
+          Container(
+            width: 46, height: 46,
+            decoration: BoxDecoration(
+              color: color.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: isLoading
+                ? Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: CircularProgressIndicator(strokeWidth: 2, color: color))
+                : Icon(
+                    hasFile ? Icons.check_circle_rounded : icon,
+                    color: hasFile ? Colors.green : color, size: 22),
+          ),
+          const SizedBox(width: 14),
+          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(title,
+                style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700,
+                    color: AppColors.textDark)),
+            const SizedBox(height: 2),
+            Text(
+              hasFile ? fileName! : subtitle,
+              style: TextStyle(
+                fontSize: 12,
+                color: hasFile ? Colors.green.shade700 : AppColors.textGrey,
+                fontWeight: hasFile ? FontWeight.w600 : FontWeight.w400,
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ])),
+          if (hasFile)
+            GestureDetector(
+              onTap: onRemove,
+              child: Container(
+                padding: const EdgeInsets.all(6),
+                decoration: BoxDecoration(
+                  color: Colors.red.withOpacity(0.08),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(Icons.close_rounded, color: Colors.red, size: 16),
+              ),
+            )
+          else
+            Icon(Icons.upload_file_rounded, color: color.withOpacity(0.5), size: 20),
+        ]),
+      ),
+    );
+  }
 }

@@ -10,6 +10,7 @@ import 'register_screen.dart';
 import 'forgot_password_screen.dart';
 import 'otp_screen.dart';
 import 'parent_home_screen.dart';
+import 'admin_screen.dart';
 import 'babysitter_home_screen.dart';
 import 'babysitter_setup_screen.dart';
 
