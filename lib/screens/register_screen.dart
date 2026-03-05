@@ -3,6 +3,8 @@ import '../theme/app_theme.dart';
 import '../widgets/custom_text_field.dart';
 import '../widgets/custom_button.dart';
 import '../services/auth_service.dart';
+import 'babysitter_setup_screen.dart';
+import 'parent_home_screen.dart';
 
 class RegisterScreen extends StatefulWidget {
   final String role;
@@ -34,10 +36,7 @@ class _RegisterScreenState extends State<RegisterScreen>
   @override
   void initState() {
     super.initState();
-    _animController = AnimationController(
-      duration: const Duration(milliseconds: 700),
-      vsync: this,
-    );
+    _animController = AnimationController(duration: const Duration(milliseconds: 700), vsync: this);
     _fadeAnim = CurvedAnimation(parent: _animController, curve: Curves.easeIn);
     _slideAnim = Tween<Offset>(begin: const Offset(0, 0.2), end: Offset.zero)
         .animate(CurvedAnimation(parent: _animController, curve: Curves.easeOutCubic));
@@ -67,27 +66,20 @@ class _RegisterScreenState extends State<RegisterScreen>
   }
 
   Future<void> _handleRegister() async {
-    // Validations locales
-    if (_prenomController.text.trim().isEmpty ||
-        _nomController.text.trim().isEmpty) {
-      _showSnack('Veuillez saisir votre prénom et nom.');
-      return;
+    if (_prenomController.text.trim().isEmpty || _nomController.text.trim().isEmpty) {
+      _showSnack('Veuillez saisir votre prénom et nom.'); return;
     }
     if (_emailController.text.trim().isEmpty) {
-      _showSnack('Veuillez saisir votre email.');
-      return;
+      _showSnack('Veuillez saisir votre email.'); return;
     }
     if (_passwordController.text != _confirmPasswordController.text) {
-      _showSnack('Les mots de passe ne correspondent pas.');
-      return;
+      _showSnack('Les mots de passe ne correspondent pas.'); return;
     }
     if (_passwordController.text.length < 6) {
-      _showSnack('Le mot de passe doit contenir au moins 6 caractères.');
-      return;
+      _showSnack('Le mot de passe doit contenir au moins 6 caractères.'); return;
     }
     if (!_acceptCGU) {
-      _showSnack('Veuillez accepter les conditions d\'utilisation.');
-      return;
+      _showSnack('Veuillez accepter les conditions d\'utilisation.'); return;
     }
 
     setState(() => _isLoading = true);
@@ -106,10 +98,31 @@ class _RegisterScreenState extends State<RegisterScreen>
 
     if (result.success) {
       _showSnack(result.message, isError: false);
-      await Future.delayed(const Duration(seconds: 1));
+      await Future.delayed(const Duration(milliseconds: 500));
       if (mounted) {
-        // Retour à la connexion après inscription réussie
-        Navigator.pop(context);
+        if (widget.role == 'Babysitter') {
+          // Babysitter → écran de complétion du profil
+          Navigator.pushAndRemoveUntil(
+            context,
+            PageRouteBuilder(
+              pageBuilder: (_, __, ___) => const BabysitterSetupScreen(),
+              transitionsBuilder: (_, anim, __, child) => FadeTransition(opacity: anim, child: child),
+              transitionDuration: const Duration(milliseconds: 400),
+            ),
+            (route) => false,
+          );
+        } else {
+          // Parent → accueil
+          Navigator.pushAndRemoveUntil(
+            context,
+            PageRouteBuilder(
+              pageBuilder: (_, __, ___) => const ParentHomeScreen(),
+              transitionsBuilder: (_, anim, __, child) => FadeTransition(opacity: anim, child: child),
+              transitionDuration: const Duration(milliseconds: 400),
+            ),
+            (route) => false,
+          );
+        }
       }
     } else {
       _showSnack(result.message);
@@ -141,8 +154,6 @@ class _RegisterScreenState extends State<RegisterScreen>
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     const SizedBox(height: 24),
-
-                    // Back button
                     Align(
                       alignment: Alignment.centerLeft,
                       child: GestureDetector(
@@ -150,24 +161,19 @@ class _RegisterScreenState extends State<RegisterScreen>
                         child: Container(
                           width: 40, height: 40,
                           decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(12),
+                            color: Colors.white, borderRadius: BorderRadius.circular(12),
                             boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.06), blurRadius: 10, offset: const Offset(0, 4))],
                           ),
                           child: const Icon(Icons.arrow_back_ios_new, size: 16, color: AppColors.textDark),
                         ),
                       ),
                     ),
-
                     const SizedBox(height: 28),
-
                     const Text('Créer un compte',
                       style: TextStyle(fontSize: 28, fontWeight: FontWeight.w800, color: AppColors.textDark, letterSpacing: -0.5),
                       textAlign: TextAlign.center,
                     ),
-
                     const SizedBox(height: 6),
-
                     Center(
                       child: Container(
                         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
@@ -179,10 +185,7 @@ class _RegisterScreenState extends State<RegisterScreen>
                         ]),
                       ),
                     ),
-
                     const SizedBox(height: 28),
-
-                    // ── Infos personnelles ──
                     _SectionLabel(label: 'Informations personnelles'),
                     const SizedBox(height: 12),
                     Container(
@@ -203,10 +206,7 @@ class _RegisterScreenState extends State<RegisterScreen>
                         CustomTextField(controller: _phoneController, hintText: 'Numéro de téléphone', prefixIcon: Icons.phone_outlined, keyboardType: TextInputType.phone, accentColor: accentColor),
                       ]),
                     ),
-
                     const SizedBox(height: 20),
-
-                    // ── Babysitter uniquement ──
                     if (!isParent) ...[
                       _SectionLabel(label: 'Votre profil nounou'),
                       const SizedBox(height: 12),
@@ -232,8 +232,6 @@ class _RegisterScreenState extends State<RegisterScreen>
                       ),
                       const SizedBox(height: 20),
                     ],
-
-                    // ── Sécurité ──
                     _SectionLabel(label: 'Sécurité'),
                     const SizedBox(height: 12),
                     Container(
@@ -270,10 +268,7 @@ class _RegisterScreenState extends State<RegisterScreen>
                         _PasswordStrengthIndicator(controller: _passwordController, accentColor: accentColor),
                       ]),
                     ),
-
                     const SizedBox(height: 20),
-
-                    // CGU
                     GestureDetector(
                       onTap: () => setState(() => _acceptCGU = !_acceptCGU),
                       child: Row(children: [
@@ -301,13 +296,9 @@ class _RegisterScreenState extends State<RegisterScreen>
                         ),
                       ]),
                     ),
-
                     const SizedBox(height: 28),
-
                     CustomButton(label: 'Créer mon compte', onTap: _handleRegister, isLoading: _isLoading, color: accentColor),
-
                     const SizedBox(height: 20),
-
                     Row(mainAxisAlignment: MainAxisAlignment.center, children: [
                       const Text('Déjà un compte ? ', style: TextStyle(fontSize: 14, color: AppColors.textGrey)),
                       GestureDetector(
@@ -315,7 +306,6 @@ class _RegisterScreenState extends State<RegisterScreen>
                         child: Text('Se connecter', style: TextStyle(fontSize: 14, color: accentColor, fontWeight: FontWeight.w700)),
                       ),
                     ]),
-
                     const SizedBox(height: 40),
                   ],
                 ),
@@ -341,7 +331,6 @@ class _AgeGroupSelector extends StatelessWidget {
   final Set<String> selected;
   final Function(String) onChanged;
   const _AgeGroupSelector({required this.accentColor, required this.selected, required this.onChanged});
-
   @override
   Widget build(BuildContext context) {
     const groups = ['0-1 an', '1-3 ans', '3-6 ans', '6-12 ans', '12+ ans'];

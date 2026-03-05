@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../theme/app_theme.dart';
 import '../widgets/custom_text_field.dart';
 import '../widgets/custom_button.dart';
@@ -7,6 +9,9 @@ import '../services/otp_service.dart';
 import 'register_screen.dart';
 import 'forgot_password_screen.dart';
 import 'otp_screen.dart';
+import 'parent_home_screen.dart';
+import 'babysitter_home_screen.dart';
+import 'babysitter_setup_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   final String role;
@@ -37,7 +42,7 @@ class _LoginScreenState extends State<LoginScreen>
         CurvedAnimation(parent: _animController, curve: Curves.easeIn);
     _slideAnim = Tween<Offset>(begin: const Offset(0, 0.2), end: Offset.zero)
         .animate(CurvedAnimation(
-        parent: _animController, curve: Curves.easeOutCubic));
+            parent: _animController, curve: Curves.easeOutCubic));
     _animController.forward();
 
     // Détecter si c'est un numéro de téléphone
@@ -116,7 +121,29 @@ class _LoginScreenState extends State<LoginScreen>
 
     if (result.success) {
       _showSnack('Connexion réussie !', isError: false);
-      // TODO: navigate to home screen
+      await Future.delayed(const Duration(milliseconds: 500));
+      if (!mounted) return;
+      try {
+        final uid = FirebaseAuth.instance.currentUser?.uid;
+        if (uid == null) return;
+        final doc = await FirebaseFirestore.instance.collection('users').doc(uid).get();
+        final role = doc.data()?['role'] ?? 'Parent';
+        final profilComplet = doc.data()?['profilComplet'] ?? false;
+        if (!mounted) return;
+        Widget destination;
+        if (role == 'Babysitter') {
+          destination = profilComplet ? const BabysitterHomeScreen() : const BabysitterSetupScreen();
+        } else {
+          destination = const ParentHomeScreen();
+        }
+        Navigator.pushAndRemoveUntil(context, PageRouteBuilder(
+          pageBuilder: (_, __, ___) => destination,
+          transitionsBuilder: (_, anim, __, child) => FadeTransition(opacity: anim, child: child),
+          transitionDuration: const Duration(milliseconds: 400),
+        ), (route) => false);
+      } catch (e) {
+        _showSnack('Erreur de navigation : $e');
+      }
     } else {
       _showSnack(result.message);
     }
@@ -126,7 +153,7 @@ class _LoginScreenState extends State<LoginScreen>
   Widget build(BuildContext context) {
     final isParent = widget.role == 'Parent';
     final accentColor =
-    isParent ? AppColors.buttonBlue : AppColors.primaryPink;
+        isParent ? AppColors.buttonBlue : AppColors.primaryPink;
 
     return Scaffold(
       body: Container(
@@ -244,26 +271,26 @@ class _LoginScreenState extends State<LoginScreen>
                           child: _isPhoneMode
                               ? const SizedBox.shrink()
                               : Column(children: [
-                            const SizedBox(height: 16),
-                            CustomTextField(
-                              controller: _passwordController,
-                              hintText: 'Mot de passe',
-                              prefixIcon: Icons.lock_outline_rounded,
-                              obscureText: _obscurePassword,
-                              accentColor: accentColor,
-                              suffixIcon: GestureDetector(
-                                onTap: () => setState(() =>
-                                _obscurePassword = !_obscurePassword),
-                                child: Icon(
-                                  _obscurePassword
-                                      ? Icons.visibility_outlined
-                                      : Icons.visibility_off_outlined,
-                                  color: AppColors.primaryPink,
-                                  size: 20,
-                                ),
-                              ),
-                            ),
-                          ]),
+                                  const SizedBox(height: 16),
+                                  CustomTextField(
+                                    controller: _passwordController,
+                                    hintText: 'Mot de passe',
+                                    prefixIcon: Icons.lock_outline_rounded,
+                                    obscureText: _obscurePassword,
+                                    accentColor: accentColor,
+                                    suffixIcon: GestureDetector(
+                                      onTap: () => setState(() =>
+                                          _obscurePassword = !_obscurePassword),
+                                      child: Icon(
+                                        _obscurePassword
+                                            ? Icons.visibility_outlined
+                                            : Icons.visibility_off_outlined,
+                                        color: AppColors.primaryPink,
+                                        size: 20,
+                                      ),
+                                    ),
+                                  ),
+                                ]),
                         ),
 
                         const SizedBox(height: 28),
@@ -282,14 +309,14 @@ class _LoginScreenState extends State<LoginScreen>
                           GestureDetector(
                             onTap: () => Navigator.push(context,
                                 PageRouteBuilder(
-                                  pageBuilder: (_, __, ___) =>
-                                      ForgotPasswordScreen(role: widget.role),
-                                  transitionsBuilder: (_, anim, __, child) =>
-                                      FadeTransition(
-                                          opacity: anim, child: child),
-                                  transitionDuration:
+                              pageBuilder: (_, __, ___) =>
+                                  ForgotPasswordScreen(role: widget.role),
+                              transitionsBuilder: (_, anim, __, child) =>
+                                  FadeTransition(
+                                      opacity: anim, child: child),
+                              transitionDuration:
                                   const Duration(milliseconds: 400),
-                                )),
+                            )),
                             child: Text('Mot de passe oublié ?',
                               style: TextStyle(
                                   fontSize: 14,
@@ -318,7 +345,7 @@ class _LoginScreenState extends State<LoginScreen>
                           color: Colors.white.withOpacity(0.7),
                           borderRadius: BorderRadius.circular(16),
                           border:
-                          Border.all(color: AppColors.inputBorder, width: 1.5),
+                              Border.all(color: AppColors.inputBorder, width: 1.5),
                         ),
                         child: Text('Créer un compte',
                           style: TextStyle(

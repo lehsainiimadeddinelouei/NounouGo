@@ -103,86 +103,86 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen>
                 padding: const EdgeInsets.symmetric(horizontal: 28),
                 child: _codeSent
                     ? _SuccessView(
-                  accentColor: accentColor,
-                  method: _selectedMethod,
-                  value: _selectedMethod == 'email' ? _emailController.text : _phoneController.text,
-                  onBack: () => Navigator.pop(context),
-                  onResend: _handleSend,
-                )
+                        accentColor: accentColor,
+                        method: _selectedMethod,
+                        value: _selectedMethod == 'email' ? _emailController.text : _phoneController.text,
+                        onBack: () => Navigator.pop(context),
+                        onResend: _handleSend,
+                      )
                     : Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-                  const SizedBox(height: 24),
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: GestureDetector(
-                      onTap: () => Navigator.pop(context),
-                      child: Container(
-                        width: 40, height: 40,
-                        decoration: BoxDecoration(
-                          color: Colors.white, borderRadius: BorderRadius.circular(12),
-                          boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.06), blurRadius: 10, offset: const Offset(0, 4))],
+                        const SizedBox(height: 24),
+                        Align(
+                          alignment: Alignment.centerLeft,
+                          child: GestureDetector(
+                            onTap: () => Navigator.pop(context),
+                            child: Container(
+                              width: 40, height: 40,
+                              decoration: BoxDecoration(
+                                color: Colors.white, borderRadius: BorderRadius.circular(12),
+                                boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.06), blurRadius: 10, offset: const Offset(0, 4))],
+                              ),
+                              child: const Icon(Icons.arrow_back_ios_new, size: 16, color: AppColors.textDark),
+                            ),
+                          ),
                         ),
-                        child: const Icon(Icons.arrow_back_ios_new, size: 16, color: AppColors.textDark),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 32),
-                  Center(child: Container(
-                    width: 72, height: 72,
-                    decoration: BoxDecoration(color: accentColor.withOpacity(0.1), shape: BoxShape.circle),
-                    child: Icon(Icons.lock_reset_rounded, size: 36, color: accentColor),
-                  )),
-                  const SizedBox(height: 20),
-                  const Text('Mot de passe oublié ?',
-                    style: TextStyle(fontSize: 26, fontWeight: FontWeight.w800, color: AppColors.textDark, letterSpacing: -0.5),
-                    textAlign: TextAlign.center,
-                  ),
-                  const SizedBox(height: 8),
-                  const Text('Choisissez comment recevoir\nvotre lien de réinitialisation',
-                    style: TextStyle(fontSize: 14, color: AppColors.textGrey, height: 1.5),
-                    textAlign: TextAlign.center,
-                  ),
-                  const SizedBox(height: 36),
+                        const SizedBox(height: 32),
+                        Center(child: Container(
+                          width: 72, height: 72,
+                          decoration: BoxDecoration(color: accentColor.withOpacity(0.1), shape: BoxShape.circle),
+                          child: Icon(Icons.lock_reset_rounded, size: 36, color: accentColor),
+                        )),
+                        const SizedBox(height: 20),
+                        const Text('Mot de passe oublié ?',
+                          style: TextStyle(fontSize: 26, fontWeight: FontWeight.w800, color: AppColors.textDark, letterSpacing: -0.5),
+                          textAlign: TextAlign.center,
+                        ),
+                        const SizedBox(height: 8),
+                        const Text('Choisissez comment recevoir\nvotre lien de réinitialisation',
+                          style: TextStyle(fontSize: 14, color: AppColors.textGrey, height: 1.5),
+                          textAlign: TextAlign.center,
+                        ),
+                        const SizedBox(height: 36),
 
-                  // Toggle Email / SMS
-                  Container(
-                    padding: const EdgeInsets.all(5),
-                    decoration: BoxDecoration(
-                      color: Colors.white, borderRadius: BorderRadius.circular(16),
-                      boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 16, offset: const Offset(0, 4))],
-                    ),
-                    child: Row(children: [
-                      _MethodTab(label: 'Email', icon: Icons.mail_outline_rounded, isSelected: _selectedMethod == 'email', accentColor: accentColor, onTap: () => setState(() => _selectedMethod = 'email')),
-                      _MethodTab(label: 'Téléphone', icon: Icons.phone_outlined, isSelected: _selectedMethod == 'phone', accentColor: accentColor, onTap: () => setState(() => _selectedMethod = 'phone')),
-                    ]),
-                  ),
+                        // Toggle Email / SMS
+                        Container(
+                          padding: const EdgeInsets.all(5),
+                          decoration: BoxDecoration(
+                            color: Colors.white, borderRadius: BorderRadius.circular(16),
+                            boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 16, offset: const Offset(0, 4))],
+                          ),
+                          child: Row(children: [
+                            _MethodTab(label: 'Email', icon: Icons.mail_outline_rounded, isSelected: _selectedMethod == 'email', accentColor: accentColor, onTap: () => setState(() => _selectedMethod = 'email')),
+                            _MethodTab(label: 'Téléphone', icon: Icons.phone_outlined, isSelected: _selectedMethod == 'phone', accentColor: accentColor, onTap: () => setState(() => _selectedMethod = 'phone')),
+                          ]),
+                        ),
 
-                  const SizedBox(height: 24),
+                        const SizedBox(height: 24),
 
-                  AnimatedSwitcher(
-                    duration: const Duration(milliseconds: 300),
-                    transitionBuilder: (child, anim) => FadeTransition(opacity: anim, child: SlideTransition(
-                        position: Tween<Offset>(begin: const Offset(0.1, 0), end: Offset.zero).animate(anim), child: child)),
-                    child: _selectedMethod == 'email'
-                        ? _InputCard(key: const ValueKey('email'), label: 'ADRESSE EMAIL', hint: 'exemple@email.com', icon: Icons.mail_outline_rounded, controller: _emailController, keyboardType: TextInputType.emailAddress, info: 'Nous vous enverrons un lien de réinitialisation par email.', accentColor: accentColor)
-                        : _InputCard(key: const ValueKey('phone'), label: 'NUMÉRO DE TÉLÉPHONE', hint: '+213 6 00 00 00 00', icon: Icons.phone_outlined, controller: _phoneController, keyboardType: TextInputType.phone, info: 'Nous vous enverrons un SMS avec un code de vérification.', accentColor: accentColor),
-                  ),
+                        AnimatedSwitcher(
+                          duration: const Duration(milliseconds: 300),
+                          transitionBuilder: (child, anim) => FadeTransition(opacity: anim, child: SlideTransition(
+                            position: Tween<Offset>(begin: const Offset(0.1, 0), end: Offset.zero).animate(anim), child: child)),
+                          child: _selectedMethod == 'email'
+                              ? _InputCard(key: const ValueKey('email'), label: 'ADRESSE EMAIL', hint: 'exemple@email.com', icon: Icons.mail_outline_rounded, controller: _emailController, keyboardType: TextInputType.emailAddress, info: 'Nous vous enverrons un lien de réinitialisation par email.', accentColor: accentColor)
+                              : _InputCard(key: const ValueKey('phone'), label: 'NUMÉRO DE TÉLÉPHONE', hint: '+213 6 00 00 00 00', icon: Icons.phone_outlined, controller: _phoneController, keyboardType: TextInputType.phone, info: 'Nous vous enverrons un SMS avec un code de vérification.', accentColor: accentColor),
+                        ),
 
-                  const SizedBox(height: 32),
-                  CustomButton(
-                    label: _selectedMethod == 'email' ? 'Envoyer le lien' : 'Envoyer le code SMS',
-                    onTap: _handleSend, isLoading: _isLoading, color: accentColor,
-                  ),
-                  const SizedBox(height: 20),
-                  GestureDetector(
-                    onTap: () => Navigator.pop(context),
-                    child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                      const Icon(Icons.arrow_back_rounded, size: 16, color: AppColors.textGrey),
-                      const SizedBox(width: 6),
-                      const Text('Retour à la connexion', style: TextStyle(fontSize: 14, color: AppColors.textGrey, fontWeight: FontWeight.w500)),
-                    ]),
-                  ),
-                  const SizedBox(height: 40),
-                ]),
+                        const SizedBox(height: 32),
+                        CustomButton(
+                          label: _selectedMethod == 'email' ? 'Envoyer le lien' : 'Envoyer le code SMS',
+                          onTap: _handleSend, isLoading: _isLoading, color: accentColor,
+                        ),
+                        const SizedBox(height: 20),
+                        GestureDetector(
+                          onTap: () => Navigator.pop(context),
+                          child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                            const Icon(Icons.arrow_back_rounded, size: 16, color: AppColors.textGrey),
+                            const SizedBox(width: 6),
+                            const Text('Retour à la connexion', style: TextStyle(fontSize: 14, color: AppColors.textGrey, fontWeight: FontWeight.w500)),
+                          ]),
+                        ),
+                        const SizedBox(height: 40),
+                      ]),
               ),
             ),
           ),
@@ -205,7 +205,7 @@ class _InputCard extends StatelessWidget {
   Widget build(BuildContext context) => Container(
     padding: const EdgeInsets.all(20),
     decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20),
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.06), blurRadius: 20, offset: const Offset(0, 6))]),
+      boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.06), blurRadius: 20, offset: const Offset(0, 6))]),
     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Text(label, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.textGrey, letterSpacing: 1.2)),
       const SizedBox(height: 12),
@@ -275,22 +275,22 @@ class _SuccessView extends StatelessWidget {
       ),
       const SizedBox(height: 12),
       Text(isEmail ? 'Un lien de réinitialisation a été envoyé à' : 'Un code a été envoyé au',
-          style: const TextStyle(fontSize: 14, color: AppColors.textGrey, height: 1.5), textAlign: TextAlign.center),
+        style: const TextStyle(fontSize: 14, color: AppColors.textGrey, height: 1.5), textAlign: TextAlign.center),
       const SizedBox(height: 6),
       Text(value, style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: accentColor), textAlign: TextAlign.center),
       const SizedBox(height: 48),
       SizedBox(width: double.infinity, child: ElevatedButton(
         onPressed: onBack,
         style: ElevatedButton.styleFrom(backgroundColor: accentColor, foregroundColor: Colors.white,
-            padding: const EdgeInsets.symmetric(vertical: 16),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)), elevation: 0),
+          padding: const EdgeInsets.symmetric(vertical: 16),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)), elevation: 0),
         child: const Text('Retour à la connexion', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
       )),
       const SizedBox(height: 16),
       TextButton(
         onPressed: onResend,
         child: Text('Renvoyer le ${isEmail ? "lien" : "code"}',
-            style: const TextStyle(fontSize: 14, color: AppColors.textGrey, fontWeight: FontWeight.w500)),
+          style: const TextStyle(fontSize: 14, color: AppColors.textGrey, fontWeight: FontWeight.w500)),
       ),
       const SizedBox(height: 40),
     ]);

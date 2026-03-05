@@ -1,0 +1,25 @@
+{
+  "indexes": [
+    { "collectionGroup": "demandes", "queryScope": "COLLECTION",
+      "fields": [{"fieldPath": "parentUid","order": "ASCENDING"},{"fieldPath": "createdAt","order": "DESCENDING"}]},
+    { "collectionGroup": "demandes", "queryScope": "COLLECTION",
+      "fields": [{"fieldPath": "nounouUid","order": "ASCENDING"},{"fieldPath": "createdAt","order": "DESCENDING"}]},
+    { "collectionGroup": "demandes", "queryScope": "COLLECTION",
+      "fields": [{"fieldPath": "parentUid","order": "ASCENDING"},{"fieldPath": "statut","order": "ASCENDING"}]},
+    { "collectionGroup": "demandes", "queryScope": "COLLECTION",
+      "fields": [{"fieldPath": "nounouUid","order": "ASCENDING"},{"fieldPath": "statut","order": "ASCENDING"}]},
+    { "collectionGroup": "conversations", "queryScope": "COLLECTION",
+      "fields": [{"fieldPath": "participants","arrayConfig": "CONTAINS"},{"fieldPath": "lastMessageAt","order": "DESCENDING"}]},
+    { "collectionGroup": "notifications", "queryScope": "COLLECTION",
+      "fields": [{"fieldPath": "destinataireUid","order": "ASCENDING"},{"fieldPath": "lu","order": "ASCENDING"}]},
+    { "collectionGroup": "paiements", "queryScope": "COLLECTION",
+      "fields": [{"fieldPath": "parentUid","order": "ASCENDING"},{"fieldPath": "createdAt","order": "DESCENDING"}]},
+    { "collectionGroup": "paiements", "queryScope": "COLLECTION",
+      "fields": [{"fieldPath": "nounouUid","order": "ASCENDING"},{"fieldPath": "createdAt","order": "DESCENDING"}]},
+    { "collectionGroup": "avis", "queryScope": "COLLECTION",
+      "fields": [{"fieldPath": "nounouUid","order": "ASCENDING"},{"fieldPath": "createdAt","order": "DESCENDING"}]},
+    { "collectionGroup": "avis", "queryScope": "COLLECTION",
+      "fields": [{"fieldPath": "demandeId","order": "ASCENDING"},{"fieldPath": "createdAt","order": "DESCENDING"}]}
+  ],
+  "fieldOverrides": []
+}

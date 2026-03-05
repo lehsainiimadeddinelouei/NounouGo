@@ -5,9 +5,13 @@ class AuthService {
   static final FirebaseAuth _auth = FirebaseAuth.instance;
   static final FirebaseFirestore _db = FirebaseFirestore.instance;
 
+  // ── Utilisateur courant ──
   static User? get currentUser => _auth.currentUser;
   static Stream<User?> get authStateChanges => _auth.authStateChanges();
 
+  // ─────────────────────────────────────────────
+  // CRÉER UN COMPTE
+  // ─────────────────────────────────────────────
   static Future<AuthResult> register({
     required String prenom,
     required String nom,
@@ -18,13 +22,21 @@ class AuthService {
     List<String> ageGroups = const [],
   }) async {
     try {
+      // 1. Créer le compte Firebase Auth
       final credential = await _auth.createUserWithEmailAndPassword(
         email: email.trim(),
         password: password,
       );
+
       final user = credential.user!;
+
+      // 2. Mettre à jour le displayName
       await user.updateDisplayName('$prenom $nom');
+
+      // 3. Envoyer l'email de vérification
       await user.sendEmailVerification();
+
+      // 4. Sauvegarder le profil dans Firestore
       await _db.collection('users').doc(user.uid).set({
         'uid': user.uid,
         'prenom': prenom.trim(),
@@ -37,7 +49,8 @@ class AuthService {
         'createdAt': FieldValue.serverTimestamp(),
         'profileComplete': false,
       });
-      return AuthResult(success: true, message: 'Compte créé ! Vérifiez votre email.');
+
+      return AuthResult(success: true, message: 'Compte créé avec succès ! Vérifiez votre email.');
     } on FirebaseAuthException catch (e) {
       return AuthResult(success: false, message: _authErrorMessage(e.code));
     } catch (e) {
@@ -45,6 +58,9 @@ class AuthService {
     }
   }
 
+  // ─────────────────────────────────────────────
+  // CONNEXION
+  // ─────────────────────────────────────────────
   static Future<AuthResult> login({
     required String email,
     required String password,
@@ -62,6 +78,9 @@ class AuthService {
     }
   }
 
+  // ─────────────────────────────────────────────
+  // MOT DE PASSE OUBLIÉ
+  // ─────────────────────────────────────────────
   static Future<AuthResult> sendPasswordReset({required String email}) async {
     try {
       await _auth.sendPasswordResetEmail(email: email.trim());
@@ -73,10 +92,16 @@ class AuthService {
     }
   }
 
+  // ─────────────────────────────────────────────
+  // DÉCONNEXION
+  // ─────────────────────────────────────────────
   static Future<void> logout() async {
     await _auth.signOut();
   }
 
+  // ─────────────────────────────────────────────
+  // MESSAGES D'ERREUR EN FRANÇAIS
+  // ─────────────────────────────────────────────
   static String _authErrorMessage(String code) {
     switch (code) {
       case 'email-already-in-use':
@@ -103,6 +128,7 @@ class AuthService {
   }
 }
 
+// ── Résultat d'une opération Auth ──
 class AuthResult {
   final bool success;
   final String message;

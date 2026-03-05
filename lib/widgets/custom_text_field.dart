@@ -68,16 +68,25 @@ class _CustomTextFieldState extends State<CustomTextField> {
                 color: _isFocused ? widget.accentColor : AppColors.textGrey,
               ),
             ),
-            prefixIconConstraints: const BoxConstraints(minWidth: 50, minHeight: 50),
+            prefixIconConstraints: const BoxConstraints(
+              minWidth: 50,
+              minHeight: 50,
+            ),
             suffixIcon: widget.suffixIcon != null
                 ? Padding(
-              padding: const EdgeInsets.only(right: 14),
-              child: widget.suffixIcon,
-            )
+                    padding: const EdgeInsets.only(right: 14),
+                    child: widget.suffixIcon,
+                  )
                 : null,
-            suffixIconConstraints: const BoxConstraints(minWidth: 40, minHeight: 40),
+            suffixIconConstraints: const BoxConstraints(
+              minWidth: 40,
+              minHeight: 40,
+            ),
             border: InputBorder.none,
-            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 16,
+              vertical: 16,
+            ),
           ),
         ),
       ),

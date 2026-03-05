@@ -1,0 +1,428 @@
+import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import '../theme/app_theme.dart';
+import '../widgets/custom_text_field.dart';
+import '../widgets/custom_button.dart';
+import 'babysitter_home_screen.dart';
+
+class BabysitterSetupScreen extends StatefulWidget {
+  const BabysitterSetupScreen({super.key});
+  @override
+  State<BabysitterSetupScreen> createState() => _BabysitterSetupScreenState();
+}
+
+class _BabysitterSetupScreenState extends State<BabysitterSetupScreen>
+    with SingleTickerProviderStateMixin {
+  final _db = FirebaseFirestore.instance;
+  final _auth = FirebaseAuth.instance;
+
+  final _villeController = TextEditingController();
+  final _bioController = TextEditingController();
+  final _prixController = TextEditingController();
+  final _diplomeController = TextEditingController();
+  final _competenceController = TextEditingController();
+  final _experienceController = TextEditingController();
+
+  final List<String> _diplomes = [];
+  final List<String> _competences = [];
+  final List<String> _experiences = [];
+  final Set<String> _disponibilites = {};
+  final Set<String> _ageGroups = {};
+
+  bool _isSaving = false;
+  int _currentStep = 0;
+
+  late AnimationController _animController;
+  late Animation<double> _fadeAnim;
+
+  final List<String> _disponibilitesList = ['Matin', 'Après-midi', 'Soir', 'Week-end', 'Temps plein'];
+  final List<String> _ageGroupsList = ['0-1 an', '1-3 ans', '3-6 ans', '6-12 ans', '12+ ans'];
+
+  @override
+  void initState() {
+    super.initState();
+    _animController = AnimationController(duration: const Duration(milliseconds: 400), vsync: this);
+    _fadeAnim = CurvedAnimation(parent: _animController, curve: Curves.easeIn);
+    _animController.forward();
+  }
+
+  @override
+  void dispose() {
+    _animController.dispose();
+    _villeController.dispose();
+    _bioController.dispose();
+    _prixController.dispose();
+    _diplomeController.dispose();
+    _competenceController.dispose();
+    _experienceController.dispose();
+    super.dispose();
+  }
+
+  void _addItem(TextEditingController ctrl, List<String> list) {
+    final val = ctrl.text.trim();
+    if (val.isEmpty) return;
+    setState(() { list.add(val); ctrl.clear(); });
+  }
+
+  void _removeItem(List<String> list, int index) => setState(() => list.removeAt(index));
+
+  Future<void> _saveProfil() async {
+    if (_villeController.text.trim().isEmpty) {
+      _showSnack('Veuillez saisir votre ville.'); return;
+    }
+    setState(() => _isSaving = true);
+    try {
+      final uid = _auth.currentUser?.uid;
+      if (uid == null) return;
+      await _db.collection('users').doc(uid).update({
+        'ville': _villeController.text.trim(),
+        'bio': _bioController.text.trim(),
+        'prixHeure': int.tryParse(_prixController.text.trim()) ?? 0,
+        'diplomes': _diplomes,
+        'competences': _competences,
+        'experiences': _experiences,
+        'disponibilites': _disponibilites.toList(),
+        'ageGroups': _ageGroups.toList(),
+        'score': 0.0,
+        'nbAvis': 0,
+        'commentaires': [],
+        'profilComplet': true,
+      });
+      if (mounted) {
+        Navigator.pushAndRemoveUntil(context, PageRouteBuilder(
+          pageBuilder: (_, __, ___) => const BabysitterHomeScreen(),
+          transitionsBuilder: (_, anim, __, child) => FadeTransition(opacity: anim, child: child),
+          transitionDuration: const Duration(milliseconds: 400),
+        ), (route) => false);
+      }
+    } catch (e) {
+      setState(() => _isSaving = false);
+      _showSnack('Erreur : $e');
+    }
+  }
+
+  void _showSnack(String msg, {bool isError = true}) {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(msg),
+      backgroundColor: isError ? AppColors.primaryPink : Colors.green,
+      behavior: SnackBarBehavior.floating,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      margin: const EdgeInsets.all(16),
+    ));
+  }
+
+  void _nextStep() {
+    if (_currentStep < 3) {
+      setState(() => _currentStep++);
+      _animController.reset();
+      _animController.forward();
+    } else {
+      _saveProfil();
+    }
+  }
+
+  void _prevStep() {
+    if (_currentStep > 0) {
+      setState(() => _currentStep--);
+      _animController.reset();
+      _animController.forward();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter,
+              colors: [AppColors.backgroundGradientStart, Color(0xFFF8EEFF)]),
+        ),
+        child: SafeArea(
+          child: Column(children: [
+            // ── Header progress ──
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+                  if (_currentStep > 0)
+                    GestureDetector(
+                      onTap: _prevStep,
+                      child: Container(width: 40, height: 40,
+                        decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12),
+                            boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.06), blurRadius: 10)]),
+                        child: const Icon(Icons.arrow_back_ios_new, size: 16, color: AppColors.textDark),
+                      ),
+                    )
+                  else const SizedBox(width: 40),
+                  Text('${_currentStep + 1} / 4',
+                      style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: AppColors.textGrey)),
+                  const SizedBox(width: 40),
+                ]),
+                const SizedBox(height: 16),
+                // Barre de progression
+                Row(children: List.generate(4, (i) => Expanded(child: Container(
+                  margin: EdgeInsets.only(right: i < 3 ? 6 : 0),
+                  height: 6,
+                  decoration: BoxDecoration(
+                    color: i <= _currentStep ? AppColors.primaryPink : AppColors.lightPink,
+                    borderRadius: BorderRadius.circular(3),
+                  ),
+                )))),
+                const SizedBox(height: 20),
+              ]),
+            ),
+
+            // ── Contenu des étapes ──
+            Expanded(
+              child: FadeTransition(
+                opacity: _fadeAnim,
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  child: [
+                    _buildStep1(),
+                    _buildStep2(),
+                    _buildStep3(),
+                    _buildStep4(),
+                  ][_currentStep],
+                ),
+              ),
+            ),
+
+            // ── Bouton suivant ──
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+              child: CustomButton(
+                label: _currentStep < 3 ? 'Suivant →' : 'Terminer mon profil ✓',
+                onTap: _nextStep,
+                isLoading: _isSaving,
+                color: AppColors.primaryPink,
+              ),
+            ),
+          ]),
+        ),
+      ),
+    );
+  }
+
+  // ── Étape 1 : Infos de base ──
+  Widget _buildStep1() => Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+    const Text('Informations de base', style: TextStyle(fontSize: 24, fontWeight: FontWeight.w800, color: AppColors.textDark)),
+    const SizedBox(height: 6),
+    const Text('Dites-nous où vous êtes et votre tarif', style: TextStyle(fontSize: 14, color: AppColors.textGrey)),
+    const SizedBox(height: 24),
+    Container(
+      padding: const EdgeInsets.all(20),
+      decoration: _cardDecoration(),
+      child: Column(children: [
+        CustomTextField(controller: _villeController, hintText: 'Votre ville *',
+            prefixIcon: Icons.location_on_outlined, accentColor: AppColors.primaryPink),
+        const SizedBox(height: 14),
+        CustomTextField(controller: _prixController, hintText: 'Prix / heure (DA)',
+            prefixIcon: Icons.payments_outlined, keyboardType: TextInputType.number, accentColor: AppColors.primaryPink),
+        const SizedBox(height: 14),
+        TextField(
+          controller: _bioController, maxLines: 4,
+          style: const TextStyle(fontSize: 14, color: AppColors.textDark),
+          decoration: InputDecoration(
+            hintText: 'Présentez-vous en quelques mots...',
+            hintStyle: const TextStyle(color: AppColors.textGrey, fontSize: 14),
+            filled: true, fillColor: AppColors.lightPink,
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
+            focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(14),
+                borderSide: const BorderSide(color: AppColors.primaryPink, width: 1.5)),
+            contentPadding: const EdgeInsets.all(16),
+          ),
+        ),
+      ]),
+    ),
+    const SizedBox(height: 24),
+    const Text('Disponibilités', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: AppColors.textDark)),
+    const SizedBox(height: 10),
+    Wrap(spacing: 8, runSpacing: 8, children: _disponibilitesList.map((d) => GestureDetector(
+      onTap: () => setState(() => _disponibilites.contains(d) ? _disponibilites.remove(d) : _disponibilites.add(d)),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        decoration: BoxDecoration(
+          color: _disponibilites.contains(d) ? AppColors.primaryPink : AppColors.lightPink,
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Text(d, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600,
+            color: _disponibilites.contains(d) ? Colors.white : AppColors.textDark)),
+      ),
+    )).toList()),
+    const SizedBox(height: 24),
+    const Text('Tranches d\'âge', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: AppColors.textDark)),
+    const SizedBox(height: 10),
+    Wrap(spacing: 8, runSpacing: 8, children: _ageGroupsList.map((a) => GestureDetector(
+      onTap: () => setState(() => _ageGroups.contains(a) ? _ageGroups.remove(a) : _ageGroups.add(a)),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        decoration: BoxDecoration(
+          color: _ageGroups.contains(a) ? AppColors.buttonBlue : AppColors.lightPink,
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Text(a, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600,
+            color: _ageGroups.contains(a) ? Colors.white : AppColors.textDark)),
+      ),
+    )).toList()),
+    const SizedBox(height: 20),
+  ]);
+
+  // ── Étape 2 : Diplômes ──
+  Widget _buildStep2() => Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+    const Text('Diplômes & Formations', style: TextStyle(fontSize: 24, fontWeight: FontWeight.w800, color: AppColors.textDark)),
+    const SizedBox(height: 6),
+    const Text('Ajoutez vos diplômes et certifications', style: TextStyle(fontSize: 14, color: AppColors.textGrey)),
+    const SizedBox(height: 24),
+    Container(
+      padding: const EdgeInsets.all(20),
+      decoration: _cardDecoration(),
+      child: Column(children: [
+        Row(children: [
+          Expanded(child: CustomTextField(controller: _diplomeController,
+              hintText: 'Ex: CAP Petite Enfance', prefixIcon: Icons.school_outlined, accentColor: AppColors.primaryPink)),
+          const SizedBox(width: 10),
+          GestureDetector(
+            onTap: () => _addItem(_diplomeController, _diplomes),
+            child: Container(width: 46, height: 46,
+              decoration: BoxDecoration(color: AppColors.primaryPink, borderRadius: BorderRadius.circular(12)),
+              child: const Icon(Icons.add, color: Colors.white)),
+          ),
+        ]),
+      ]),
+    ),
+    const SizedBox(height: 16),
+    if (_diplomes.isNotEmpty) ..._diplomes.asMap().entries.map((e) => _ItemCard(
+      text: e.value, icon: Icons.school_outlined, color: AppColors.primaryPink,
+      onRemove: () => _removeItem(_diplomes, e.key),
+    )),
+    if (_diplomes.isEmpty) _EmptyHint(text: 'Aucun diplôme ajouté'),
+    const SizedBox(height: 20),
+  ]);
+
+  // ── Étape 3 : Compétences ──
+  Widget _buildStep3() => Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+    const Text('Compétences', style: TextStyle(fontSize: 24, fontWeight: FontWeight.w800, color: AppColors.textDark)),
+    const SizedBox(height: 6),
+    const Text('Vos atouts et compétences spéciales', style: TextStyle(fontSize: 14, color: AppColors.textGrey)),
+    const SizedBox(height: 24),
+    Container(
+      padding: const EdgeInsets.all(20),
+      decoration: _cardDecoration(),
+      child: Column(children: [
+        Row(children: [
+          Expanded(child: CustomTextField(controller: _competenceController,
+              hintText: 'Ex: Premiers secours', prefixIcon: Icons.star_outline_rounded, accentColor: AppColors.buttonBlue)),
+          const SizedBox(width: 10),
+          GestureDetector(
+            onTap: () => _addItem(_competenceController, _competences),
+            child: Container(width: 46, height: 46,
+              decoration: BoxDecoration(color: AppColors.buttonBlue, borderRadius: BorderRadius.circular(12)),
+              child: const Icon(Icons.add, color: Colors.white)),
+          ),
+        ]),
+      ]),
+    ),
+    const SizedBox(height: 16),
+    if (_competences.isNotEmpty) Wrap(spacing: 8, runSpacing: 8, children: _competences.asMap().entries.map((e) =>
+      Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        decoration: BoxDecoration(color: AppColors.buttonBlue.withOpacity(0.1), borderRadius: BorderRadius.circular(20)),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          Text(e.value, style: const TextStyle(fontSize: 13, color: AppColors.buttonBlue, fontWeight: FontWeight.w600)),
+          const SizedBox(width: 6),
+          GestureDetector(onTap: () => _removeItem(_competences, e.key),
+              child: const Icon(Icons.close, size: 14, color: AppColors.buttonBlue)),
+        ]),
+      ),
+    ).toList()),
+    if (_competences.isEmpty) _EmptyHint(text: 'Aucune compétence ajoutée'),
+    const SizedBox(height: 20),
+  ]);
+
+  // ── Étape 4 : Expériences ──
+  Widget _buildStep4() => Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+    const Text('Expériences', style: TextStyle(fontSize: 24, fontWeight: FontWeight.w800, color: AppColors.textDark)),
+    const SizedBox(height: 6),
+    const Text('Décrivez vos expériences passées', style: TextStyle(fontSize: 14, color: AppColors.textGrey)),
+    const SizedBox(height: 24),
+    Container(
+      padding: const EdgeInsets.all(20),
+      decoration: _cardDecoration(),
+      child: Column(children: [
+        TextField(
+          controller: _experienceController, maxLines: 2,
+          style: const TextStyle(fontSize: 14, color: AppColors.textDark),
+          decoration: InputDecoration(
+            hintText: 'Ex: 2 ans garde d\'enfants famille Dupont...',
+            hintStyle: const TextStyle(color: AppColors.textGrey, fontSize: 13),
+            filled: true, fillColor: AppColors.lightPink,
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+            focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12),
+                borderSide: const BorderSide(color: AppColors.primaryPink, width: 1.5)),
+            contentPadding: const EdgeInsets.all(14),
+          ),
+        ),
+        const SizedBox(height: 10),
+        SizedBox(
+          width: double.infinity,
+          child: ElevatedButton.icon(
+            onPressed: () => _addItem(_experienceController, _experiences),
+            icon: const Icon(Icons.add, size: 18),
+            label: const Text('Ajouter', style: TextStyle(fontWeight: FontWeight.w700)),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.primaryPink, foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              elevation: 0,
+            ),
+          ),
+        ),
+      ]),
+    ),
+    const SizedBox(height: 16),
+    if (_experiences.isNotEmpty) ..._experiences.asMap().entries.map((e) => _ItemCard(
+      text: e.value, icon: Icons.work_outline_rounded, color: const Color(0xFF9B59B6),
+      onRemove: () => _removeItem(_experiences, e.key),
+    )),
+    if (_experiences.isEmpty) _EmptyHint(text: 'Aucune expérience ajoutée'),
+    const SizedBox(height: 20),
+  ]);
+
+  BoxDecoration _cardDecoration() => BoxDecoration(
+    color: Colors.white, borderRadius: BorderRadius.circular(20),
+    boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.06), blurRadius: 20, offset: const Offset(0, 6))],
+  );
+}
+
+class _ItemCard extends StatelessWidget {
+  final String text; final IconData icon; final Color color; final VoidCallback onRemove;
+  const _ItemCard({required this.text, required this.icon, required this.color, required this.onRemove});
+  @override
+  Widget build(BuildContext context) => Container(
+    margin: const EdgeInsets.only(bottom: 8),
+    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+    decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12),
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 8)]),
+    child: Row(children: [
+      Icon(icon, size: 18, color: color),
+      const SizedBox(width: 12),
+      Expanded(child: Text(text, style: const TextStyle(fontSize: 14, color: AppColors.textDark, fontWeight: FontWeight.w500))),
+      GestureDetector(onTap: onRemove, child: Icon(Icons.delete_outline_rounded, size: 18, color: AppColors.textGrey)),
+    ]),
+  );
+}
+
+class _EmptyHint extends StatelessWidget {
+  final String text;
+  const _EmptyHint({required this.text});
+  @override
+  Widget build(BuildContext context) => Container(
+    width: double.infinity, padding: const EdgeInsets.all(16),
+    decoration: BoxDecoration(color: AppColors.lightPink, borderRadius: BorderRadius.circular(12)),
+    child: Text(text, style: const TextStyle(fontSize: 13, color: AppColors.textGrey), textAlign: TextAlign.center),
+  );
+}

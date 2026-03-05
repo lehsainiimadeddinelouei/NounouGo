@@ -44,8 +44,9 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen>
         context,
         PageRouteBuilder(
           pageBuilder: (_, __, ___) => LoginScreen(role: role),
-          transitionsBuilder: (_, animation, __, child) =>
-              FadeTransition(opacity: animation, child: child),
+          transitionsBuilder: (_, animation, __, child) {
+            return FadeTransition(opacity: animation, child: child);
+          },
           transitionDuration: const Duration(milliseconds: 400),
         ),
       );
@@ -60,7 +61,10 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen>
           gradient: LinearGradient(
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
-            colors: [AppColors.backgroundGradientStart, AppColors.backgroundGradientEnd],
+            colors: [
+              AppColors.backgroundGradientStart,
+              AppColors.backgroundGradientEnd,
+            ],
           ),
         ),
         child: SafeArea(
@@ -74,20 +78,31 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen>
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     const SizedBox(height: 40),
+                    // Logo
                     Image.asset(
                       'assets/images/logo.png',
                       height: 60,
                       errorBuilder: (_, __, ___) => const Text(
                         'NounouGo',
-                        style: TextStyle(fontSize: 28, fontWeight: FontWeight.w800, color: AppColors.textDark),
+                        style: TextStyle(
+                          fontSize: 28,
+                          fontWeight: FontWeight.w800,
+                          color: AppColors.textDark,
+                          letterSpacing: -0.5,
+                        ),
                       ),
                     ),
                     const SizedBox(height: 48),
                     const Text(
                       'Vous êtes...',
-                      style: TextStyle(fontSize: 26, fontWeight: FontWeight.w800, color: AppColors.textDark),
+                      style: TextStyle(
+                        fontSize: 26,
+                        fontWeight: FontWeight.w800,
+                        color: AppColors.textDark,
+                      ),
                     ),
                     const SizedBox(height: 36),
+                    // Role Cards Row
                     Row(
                       children: [
                         Expanded(
@@ -118,6 +133,7 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen>
                       ],
                     ),
                     const SizedBox(height: 40),
+                    // Bottom dots indicator
                     Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
@@ -141,81 +157,155 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen>
 }
 
 class _RoleCard extends StatefulWidget {
-  final String role, label, subtitle, imagePath;
+  final String role;
+  final String label;
+  final String subtitle;
+  final String imagePath;
   final bool isSelected;
-  final Color selectedColor, accentColor;
+  final Color selectedColor;
+  final Color accentColor;
   final VoidCallback onTap;
 
   const _RoleCard({
-    required this.role, required this.label, required this.subtitle,
-    required this.imagePath, required this.isSelected,
-    required this.selectedColor, required this.accentColor, required this.onTap,
+    required this.role,
+    required this.label,
+    required this.subtitle,
+    required this.imagePath,
+    required this.isSelected,
+    required this.selectedColor,
+    required this.accentColor,
+    required this.onTap,
   });
 
   @override
   State<_RoleCard> createState() => _RoleCardState();
 }
 
-class _RoleCardState extends State<_RoleCard> with SingleTickerProviderStateMixin {
+class _RoleCardState extends State<_RoleCard>
+    with SingleTickerProviderStateMixin {
   late AnimationController _scaleController;
+  late Animation<double> _scaleAnimation;
 
   @override
   void initState() {
     super.initState();
     _scaleController = AnimationController(
       duration: const Duration(milliseconds: 150),
-      vsync: this, lowerBound: 0.95, upperBound: 1.0, value: 1.0,
+      vsync: this,
+      lowerBound: 0.95,
+      upperBound: 1.0,
+      value: 1.0,
     );
+    _scaleAnimation = _scaleController;
   }
 
   @override
-  void dispose() { _scaleController.dispose(); super.dispose(); }
+  void dispose() {
+    _scaleController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
       onTapDown: (_) => _scaleController.reverse(),
-      onTapUp: (_) { _scaleController.forward(); widget.onTap(); },
+      onTapUp: (_) {
+        _scaleController.forward();
+        widget.onTap();
+      },
       onTapCancel: () => _scaleController.forward(),
       child: AnimatedBuilder(
-        animation: _scaleController,
-        builder: (_, child) => Transform.scale(scale: _scaleController.value, child: child),
+        animation: _scaleAnimation,
+        builder: (_, child) => Transform.scale(
+          scale: _scaleAnimation.value,
+          child: child,
+        ),
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 200),
           decoration: BoxDecoration(
-            color: widget.isSelected ? widget.selectedColor.withValues(alpha: 0.08) : Colors.white,
+            color: widget.isSelected
+                ? widget.selectedColor.withOpacity(0.08)
+                : Colors.white,
             borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: widget.isSelected ? widget.accentColor : Colors.transparent, width: 2),
-            boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.06), blurRadius: 20, offset: const Offset(0, 8))],
+            border: Border.all(
+              color: widget.isSelected
+                  ? widget.accentColor
+                  : Colors.transparent,
+              width: 2,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.06),
+                blurRadius: 20,
+                offset: const Offset(0, 8),
+              ),
+            ],
           ),
           padding: const EdgeInsets.all(20),
-          child: Column(children: [
-            Text(widget.label,
+          child: Column(
+            children: [
+              Text(
+                widget.label,
                 textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700,
-                    color: widget.isSelected ? widget.accentColor : AppColors.textDark, height: 1.3)),
-            const SizedBox(height: 16),
-            Container(
-              width: 90, height: 90,
-              decoration: BoxDecoration(shape: BoxShape.circle, color: widget.accentColor.withValues(alpha: 0.1)),
-              child: ClipOval(child: Image.asset(widget.imagePath, fit: BoxFit.cover,
-                  errorBuilder: (_, __, ___) => Icon(
-                      widget.role == 'Parent' ? Icons.family_restroom : Icons.child_care,
-                      size: 48, color: widget.accentColor))),
-            ),
-            const SizedBox(height: 16),
-            AnimatedContainer(
-              duration: const Duration(milliseconds: 200),
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-              decoration: BoxDecoration(
-                color: widget.isSelected ? widget.accentColor : widget.accentColor.withValues(alpha: 0.12),
-                borderRadius: BorderRadius.circular(20),
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                  color: widget.isSelected
+                      ? widget.accentColor
+                      : AppColors.textDark,
+                  height: 1.3,
+                ),
               ),
-              child: Text(widget.subtitle,
-                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600,
-                      color: widget.isSelected ? Colors.white : widget.accentColor)),
-            ),
-          ]),
+              const SizedBox(height: 16),
+              // Avatar circle
+              Container(
+                width: 90,
+                height: 90,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: widget.accentColor.withOpacity(0.1),
+                ),
+                child: ClipOval(
+                  child: Image.asset(
+                    widget.imagePath,
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, __, ___) => Icon(
+                      widget.role == 'Parent'
+                          ? Icons.family_restroom
+                          : Icons.child_care,
+                      size: 48,
+                      color: widget.accentColor,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              // Role badge
+              AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 6,
+                ),
+                decoration: BoxDecoration(
+                  color: widget.isSelected
+                      ? widget.accentColor
+                      : widget.accentColor.withOpacity(0.12),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Text(
+                  widget.subtitle,
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: widget.isSelected
+                        ? Colors.white
+                        : widget.accentColor,
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -230,7 +320,8 @@ class _Dot extends StatelessWidget {
   Widget build(BuildContext context) {
     return AnimatedContainer(
       duration: const Duration(milliseconds: 300),
-      width: active ? 24 : 8, height: 8,
+      width: active ? 24 : 8,
+      height: 8,
       decoration: BoxDecoration(
         color: active ? AppColors.primaryPink : AppColors.softPink,
         borderRadius: BorderRadius.circular(4),

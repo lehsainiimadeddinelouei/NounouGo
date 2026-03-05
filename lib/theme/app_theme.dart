@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 
 class AppColors {
   static const Color primaryBlue = Color(0xFF3D5A8A);
@@ -19,15 +18,12 @@ class AppColors {
 class AppTheme {
   static ThemeData get theme {
     return ThemeData(
-      // Utilisation sécurisée de GoogleFonts
-      textTheme: GoogleFonts.nunitoTextTheme(),
+      fontFamily: 'Nunito',
       scaffoldBackgroundColor: AppColors.backgroundGradientStart,
-      colorScheme: ColorScheme.light(
+      colorScheme: const ColorScheme.light(
         primary: AppColors.primaryBlue,
         secondary: AppColors.primaryPink,
-        surface: AppColors.cardWhite,
       ),
-      useMaterial3: true,
     );
   }
 }

@@ -55,7 +55,10 @@ class _CustomButtonState extends State<CustomButton>
       onTapCancel: () => _controller.forward(),
       child: AnimatedBuilder(
         animation: _scaleAnim,
-        builder: (_, child) => Transform.scale(scale: _scaleAnim.value, child: child),
+        builder: (_, child) => Transform.scale(
+          scale: _scaleAnim.value,
+          child: child,
+        ),
         child: Container(
           width: widget.width ?? double.infinity,
           height: 52,
@@ -78,18 +81,22 @@ class _CustomButtonState extends State<CustomButton>
           child: Center(
             child: widget.isLoading
                 ? const SizedBox(
-              width: 22, height: 22,
-              child: CircularProgressIndicator(strokeWidth: 2.5, color: Colors.white),
-            )
+                    width: 22,
+                    height: 22,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2.5,
+                      color: Colors.white,
+                    ),
+                  )
                 : Text(
-              widget.label,
-              style: const TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w700,
-                color: Colors.white,
-                letterSpacing: 0.3,
-              ),
-            ),
+                    widget.label,
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.white,
+                      letterSpacing: 0.3,
+                    ),
+                  ),
           ),
         ),
       ),
