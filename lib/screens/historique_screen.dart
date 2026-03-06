@@ -198,7 +198,7 @@ class _GardeCard extends StatelessWidget {
       } catch (e) {
         if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-            content: Text('Erreur : \$e'),
+            content: Text('Erreur : $e'),
             backgroundColor: Colors.red,
             behavior: SnackBarBehavior.floating,
           ));

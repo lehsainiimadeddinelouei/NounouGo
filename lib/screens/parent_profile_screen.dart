@@ -292,6 +292,7 @@ class _ParentProfileScreenState extends State<ParentProfileScreen>
     // Si succès → déconnecter et retourner au login
     if (passwordChanged && mounted) {
       await _auth.signOut();
+      if (!mounted) return;
       Navigator.pushAndRemoveUntil(
         context,
         PageRouteBuilder(
@@ -372,7 +373,7 @@ class _ParentProfileScreenState extends State<ParentProfileScreen>
                   } on FirebaseAuthException catch (e) {
                     setD(() { isLoading = false;
                       errorMessage = (e.code == 'wrong-password' || e.code == 'invalid-credential')
-                          ? 'Mot de passe incorrect.' : 'Erreur : \${e.message}';
+                          ? 'Mot de passe incorrect.' : 'Erreur : ${e.message}';
                     });
                   } catch (e) { setD(() { isLoading = false; errorMessage = 'Erreur inattendue.'; }); }
                 },

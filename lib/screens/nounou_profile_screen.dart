@@ -30,7 +30,6 @@ class NounouProfileScreen extends StatelessWidget {
     final experiences = List<String>.from(nounouData['experiences'] ?? []);
     final ageGroups = List<String>.from(nounouData['ageGroups'] ?? []);
     final disponibilites = List<String>.from(nounouData['disponibilites'] ?? []);
-    final commentaires = List<dynamic>.from(nounouData['commentaires'] ?? []);
 
     return Scaffold(
       body: Container(

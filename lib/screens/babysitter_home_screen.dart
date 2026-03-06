@@ -37,7 +37,6 @@ class _BabysitterHomeScreenState extends State<BabysitterHomeScreen> {
     if (doc.exists && mounted) {
       final data = doc.data()!;
       final profilComplet = data['profilComplet'] ?? false;
-      final autorisee = data['autoriseeATravail'] ?? false;
       if (!profilComplet && mounted) {
         Navigator.pushReplacement(context, PageRouteBuilder(
           pageBuilder: (_, __, ___) => const BabysitterSetupScreen(),

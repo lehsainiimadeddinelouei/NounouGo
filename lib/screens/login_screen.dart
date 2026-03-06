@@ -43,7 +43,7 @@ class _LoginScreenState extends State<LoginScreen>
         CurvedAnimation(parent: _animController, curve: Curves.easeIn);
     _slideAnim = Tween<Offset>(begin: const Offset(0, 0.2), end: Offset.zero)
         .animate(CurvedAnimation(
-            parent: _animController, curve: Curves.easeOutCubic));
+        parent: _animController, curve: Curves.easeOutCubic));
     _animController.forward();
 
     // Détecter si c'est un numéro de téléphone
@@ -128,6 +128,23 @@ class _LoginScreenState extends State<LoginScreen>
         final uid = FirebaseAuth.instance.currentUser?.uid;
         if (uid == null) return;
         final doc = await FirebaseFirestore.instance.collection('users').doc(uid).get();
+
+        // ── Compte supprimé par l'admin ──
+        if (!doc.exists) {
+          await FirebaseAuth.instance.signOut();
+          if (!mounted) return;
+          _showSnack('Ce compte a été supprimé. Contactez le support.');
+          return;
+        }
+
+        // ── Compte bloqué par l'admin ──
+        if (doc.data()?['bloque'] == true) {
+          await FirebaseAuth.instance.signOut();
+          if (!mounted) return;
+          _showSnack('🔒 Votre compte a été bloqué par l\'administrateur.');
+          return;
+        }
+
         final role = doc.data()?['role'] ?? 'Parent';
         final profilComplet = doc.data()?['profilComplet'] ?? false;
         if (!mounted) return;
@@ -154,7 +171,7 @@ class _LoginScreenState extends State<LoginScreen>
   Widget build(BuildContext context) {
     final isParent = widget.role == 'Parent';
     final accentColor =
-        isParent ? AppColors.buttonBlue : AppColors.primaryPink;
+    isParent ? AppColors.buttonBlue : AppColors.primaryPink;
 
     return Scaffold(
       body: Container(
@@ -272,26 +289,26 @@ class _LoginScreenState extends State<LoginScreen>
                           child: _isPhoneMode
                               ? const SizedBox.shrink()
                               : Column(children: [
-                                  const SizedBox(height: 16),
-                                  CustomTextField(
-                                    controller: _passwordController,
-                                    hintText: 'Mot de passe',
-                                    prefixIcon: Icons.lock_outline_rounded,
-                                    obscureText: _obscurePassword,
-                                    accentColor: accentColor,
-                                    suffixIcon: GestureDetector(
-                                      onTap: () => setState(() =>
-                                          _obscurePassword = !_obscurePassword),
-                                      child: Icon(
-                                        _obscurePassword
-                                            ? Icons.visibility_outlined
-                                            : Icons.visibility_off_outlined,
-                                        color: AppColors.primaryPink,
-                                        size: 20,
-                                      ),
-                                    ),
-                                  ),
-                                ]),
+                            const SizedBox(height: 16),
+                            CustomTextField(
+                              controller: _passwordController,
+                              hintText: 'Mot de passe',
+                              prefixIcon: Icons.lock_outline_rounded,
+                              obscureText: _obscurePassword,
+                              accentColor: accentColor,
+                              suffixIcon: GestureDetector(
+                                onTap: () => setState(() =>
+                                _obscurePassword = !_obscurePassword),
+                                child: Icon(
+                                  _obscurePassword
+                                      ? Icons.visibility_outlined
+                                      : Icons.visibility_off_outlined,
+                                  color: AppColors.primaryPink,
+                                  size: 20,
+                                ),
+                              ),
+                            ),
+                          ]),
                         ),
 
                         const SizedBox(height: 28),
@@ -310,14 +327,14 @@ class _LoginScreenState extends State<LoginScreen>
                           GestureDetector(
                             onTap: () => Navigator.push(context,
                                 PageRouteBuilder(
-                              pageBuilder: (_, __, ___) =>
-                                  ForgotPasswordScreen(role: widget.role),
-                              transitionsBuilder: (_, anim, __, child) =>
-                                  FadeTransition(
-                                      opacity: anim, child: child),
-                              transitionDuration:
+                                  pageBuilder: (_, __, ___) =>
+                                      ForgotPasswordScreen(role: widget.role),
+                                  transitionsBuilder: (_, anim, __, child) =>
+                                      FadeTransition(
+                                          opacity: anim, child: child),
+                                  transitionDuration:
                                   const Duration(milliseconds: 400),
-                            )),
+                                )),
                             child: Text('Mot de passe oublié ?',
                               style: TextStyle(
                                   fontSize: 14,
@@ -346,7 +363,7 @@ class _LoginScreenState extends State<LoginScreen>
                           color: Colors.white.withOpacity(0.7),
                           borderRadius: BorderRadius.circular(16),
                           border:
-                              Border.all(color: AppColors.inputBorder, width: 1.5),
+                          Border.all(color: AppColors.inputBorder, width: 1.5),
                         ),
                         child: Text('Créer un compte',
                           style: TextStyle(

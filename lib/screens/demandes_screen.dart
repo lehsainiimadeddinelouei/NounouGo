@@ -341,7 +341,6 @@ class _PaymentStatusRow extends StatelessWidget {
     // Déjà payé
     if (paiementStatut != null) {
       final isPaid = paiementStatut == 'payé';
-      final isCash = paiementStatut == 'en_attente_cash';
       final color = isPaid ? Colors.green : Colors.orange;
       final icon = isPaid ? Icons.check_circle_rounded : Icons.payments_rounded;
       final label = isPaid

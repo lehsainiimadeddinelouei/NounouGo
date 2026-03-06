@@ -1,6 +1,5 @@
-import 'dart:convert';
 import 'dart:io';
-import 'dart:typed_data';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../theme/app_theme.dart';
@@ -571,21 +570,24 @@ Réponds en JSON: {"valide": true/false, "confiance": 0-100, "type_doc": "CNI/Pa
   }
 
   Future<String> _postHttp(Uri uri, Map<String, dynamic> body) async {
-    // Utilise dart:io HttpClient (pas besoin du package http)
     final client = HttpClient();
-    final request = await client.postUrl(uri);
-    request.headers.set('content-type', 'application/json');
-    request.headers.set('x-api-key', ''); // Clé gérée par le proxy Anthropic
-    request.headers.set('anthropic-version', '2023-06-01');
-    request.write(jsonEncode(body));
-    final response = await request.close();
-    final respBody = await response.transform(utf8.decoder).join();
-    final decoded = jsonDecode(respBody) as Map<String, dynamic>;
-    final content = decoded['content'] as List?;
-    if (content != null && content.isNotEmpty) {
-      return (content[0] as Map)['text'] as String? ?? '';
+    try {
+      final request = await client.postUrl(uri);
+      request.headers.set('content-type', 'application/json');
+      request.headers.set('x-api-key', '');
+      request.headers.set('anthropic-version', '2023-06-01');
+      request.write(jsonEncode(body));
+      final response = await request.close();
+      final respBody = await response.transform(utf8.decoder).join();
+      final decoded = jsonDecode(respBody) as Map<String, dynamic>;
+      final responseContent = decoded['content'] as List?;
+      if (responseContent != null && responseContent.isNotEmpty) {
+        return (responseContent[0] as Map)['text'] as String? ?? '';
+      }
+      return '{"recommandation": "Vérification manuelle", "motif": "Réponse inattendue"}';
+    } finally {
+      client.close();
     }
-    return '{"recommandation": "Vérification manuelle", "motif": "Réponse inattendue"}';
   }
 
   Future<void> _updateDocStatut(String docType, String statut) async {
@@ -1023,7 +1025,19 @@ class _UserAdminCard extends StatelessWidget {
       ),
     );
     if (confirmed == true) {
+      // NOTE: On supprime le document Firestore.
+      // Le compte Firebase Auth reste (limitation sans Cloud Functions).
+      // → L'utilisateur ne peut plus se connecter car doc.exists == false
+      //   et l'email est bloqué à la réinscription côté auth_service.
       await FirebaseFirestore.instance.collection('users').doc(uid).delete();
+
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('✅ Utilisateur supprimé avec succès'),
+          backgroundColor: Colors.green,
+          behavior: SnackBarBehavior.floating,
+        ));
+      }
     }
   }
 

@@ -54,11 +54,15 @@ class _SearchNounousScreenState extends State<SearchNounousScreen>
           .where('role', isEqualTo: 'Babysitter')
           .get();
 
-      final list = query.docs.map((doc) {
-        final data = doc.data();
-        data['uid'] = doc.id;
-        return data;
-      }).toList();
+      final list = query.docs
+          .map((doc) {
+            final data = doc.data();
+            data['uid'] = doc.id;
+            return data;
+          })
+          // Exclure les nounous bloquées ou non autorisées
+          .where((n) => !(n['bloque'] ?? false) && (n['autoriseeATravail'] ?? false))
+          .toList();
 
       setState(() {
         _nounous = list;

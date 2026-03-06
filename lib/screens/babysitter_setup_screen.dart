@@ -81,7 +81,7 @@ class _BabysitterSetupScreenState extends State<BabysitterSetupScreen>
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text('Erreur : \$e'),
+          content: Text('Erreur : $e'),
           backgroundColor: Colors.red,
           behavior: SnackBarBehavior.floating,
         ));

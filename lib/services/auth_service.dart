@@ -22,6 +22,20 @@ class AuthService {
     List<String> ageGroups = const [],
   }) async {
     try {
+      // 0. Vérifier si l'email est déjà utilisé dans Auth (compte supprimé par admin)
+      // On essaie de se connecter avec fetchSignInMethodsForEmail
+      final methods = await _auth.fetchSignInMethodsForEmail(email.trim());
+      if (methods.isNotEmpty) {
+        // L'email existe dans Auth → vérifier si le doc Firestore existe aussi
+        // Si doc Firestore absent = compte orphelin (supprimé par admin)
+        // Dans ce cas on informe l'utilisateur de contacter le support
+        // ou de se connecter avec son ancien compte
+        return AuthResult(
+          success: false,
+          message: 'Cette adresse email est déjà associée à un compte. Essayez de vous connecter ou contactez le support.',
+        );
+      }
+
       // 1. Créer le compte Firebase Auth
       final credential = await _auth.createUserWithEmailAndPassword(
         email: email.trim(),
