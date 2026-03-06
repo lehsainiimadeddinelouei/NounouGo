@@ -1,35 +1,175 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../theme/app_theme.dart';
 import 'booking_screen.dart';
 import 'chat_screen.dart';
 import 'historique_screen.dart';
+import 'role_selection_screen.dart';
 
-class NounouProfileScreen extends StatelessWidget {
+class NounouProfileScreen extends StatefulWidget {
   final Map<String, dynamic> nounouData;
   const NounouProfileScreen({super.key, required this.nounouData});
+  @override
+  State<NounouProfileScreen> createState() => _NounouProfileScreenState();
+}
 
+class _NounouProfileScreenState extends State<NounouProfileScreen> {
   String get _initiales {
-    final p = (nounouData['prenom'] ?? '');
-    final n = (nounouData['nom'] ?? '');
+    final p = (widget.nounouData['prenom'] ?? '');
+    final n = (widget.nounouData['nom'] ?? '');
     return '${p.isNotEmpty ? p[0].toUpperCase() : ''}${n.isNotEmpty ? n[0].toUpperCase() : ''}';
+  }
+
+  // Vérifie si c'est la nounou elle-même qui regarde son profil
+  bool get _isOwnProfile {
+    final currentUid = FirebaseAuth.instance.currentUser?.uid;
+    return currentUid != null && currentUid == widget.nounouData['uid'];
+  }
+
+  Future<void> _deleteAccount() async {
+    final passwordCtrl = TextEditingController();
+    bool isLoading = false;
+    String? errorMsg;
+    bool obscure = true;
+
+    await showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, set) => PopScope(
+          canPop: !isLoading,
+          child: AlertDialog(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+            title: const Row(children: [
+              Icon(Icons.warning_rounded, color: Colors.red, size: 22),
+              SizedBox(width: 10),
+              Text('Supprimer le compte', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
+            ]),
+            content: Column(mainAxisSize: MainAxisSize.min, children: [
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(color: Colors.red.withOpacity(0.08), borderRadius: BorderRadius.circular(12)),
+                child: const Text('⚠️ Action irréversible. Toutes vos données seront supprimées.',
+                    style: TextStyle(fontSize: 13, color: Colors.red, height: 1.4), textAlign: TextAlign.center),
+              ),
+              const SizedBox(height: 14),
+              if (errorMsg != null) ...[
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(color: Colors.red.withOpacity(0.1), borderRadius: BorderRadius.circular(10)),
+                  child: Text(errorMsg!, style: const TextStyle(fontSize: 13, color: Colors.red)),
+                ),
+                const SizedBox(height: 10),
+              ],
+              TextField(
+                controller: passwordCtrl,
+                obscureText: obscure,
+                decoration: InputDecoration(
+                  hintText: 'Confirmez votre mot de passe',
+                  filled: true, fillColor: const Color(0xFFFFF5F7),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+                  focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Colors.red, width: 1.5)),
+                  suffixIcon: GestureDetector(
+                    onTap: () => set(() => obscure = !obscure),
+                    child: Icon(obscure ? Icons.visibility_outlined : Icons.visibility_off_outlined, color: Colors.grey, size: 20),
+                  ),
+                ),
+              ),
+            ]),
+            actions: [
+              TextButton(
+                onPressed: isLoading ? null : () => Navigator.pop(ctx),
+                child: const Text('Annuler', style: TextStyle(color: Colors.grey)),
+              ),
+              TextButton(
+                onPressed: isLoading ? null : () async {
+                  if (passwordCtrl.text.isEmpty) {
+                    set(() => errorMsg = 'Saisissez votre mot de passe.');
+                    return;
+                  }
+                  set(() { isLoading = true; errorMsg = null; });
+                  try {
+                    final user = FirebaseAuth.instance.currentUser!;
+                    final uid  = user.uid;
+                    final email = (user.email ?? '').toLowerCase();
+
+                    // 1. Réauthentifier
+                    final cred = EmailAuthProvider.credential(email: user.email!, password: passwordCtrl.text);
+                    await user.reauthenticateWithCredential(cred);
+
+                    // 2. Supprimer sous-collection documents/
+                    try {
+                      final docsSnap = await FirebaseFirestore.instance
+                          .collection('users').doc(uid).collection('documents').get();
+                      for (final d in docsSnap.docs) await d.reference.delete();
+                    } catch (_) {}
+
+                    // 3. Enregistrer dans deleted_accounts
+                    try {
+                      await FirebaseFirestore.instance.collection('deleted_accounts').doc(uid).set({
+                        'uid': uid, 'email': email,
+                        'prenom': widget.nounouData['prenom'] ?? '',
+                        'nom': widget.nounouData['nom'] ?? '',
+                        'deletedAt': FieldValue.serverTimestamp(),
+                        'deletedBySelf': true,
+                      });
+                    } catch (_) {}
+
+                    // 4. Supprimer document Firestore
+                    await FirebaseFirestore.instance.collection('users').doc(uid).delete();
+
+                    // 5. Supprimer compte Auth
+                    await user.delete();
+
+                    if (ctx.mounted) Navigator.of(ctx).pop();
+                  } on FirebaseAuthException catch (e) {
+                    set(() {
+                      isLoading = false;
+                      errorMsg = (e.code == 'wrong-password' || e.code == 'invalid-credential')
+                          ? 'Mot de passe incorrect.' : 'Erreur: ${e.code}';
+                    });
+                  } catch (e) {
+                    set(() { isLoading = false; errorMsg = 'Erreur: $e'; });
+                  }
+                },
+                child: isLoading
+                    ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.red))
+                    : const Text('Supprimer', style: TextStyle(color: Colors.red, fontWeight: FontWeight.w800)),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    passwordCtrl.dispose();
+
+    // Si supprimé → aller au login
+    if (FirebaseAuth.instance.currentUser == null && mounted) {
+      Navigator.pushAndRemoveUntil(context, PageRouteBuilder(
+        pageBuilder: (_, __, ___) => const RoleSelectionScreen(),
+        transitionsBuilder: (_, a, __, child) => FadeTransition(opacity: a, child: child),
+        transitionDuration: const Duration(milliseconds: 400),
+      ), (r) => false);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    final prenom = nounouData['prenom'] ?? '';
-    final nom = nounouData['nom'] ?? '';
-    final ville = nounouData['ville'] ?? 'Non renseignée';
-    final prix = nounouData['prixHeure'];
-    final score = (nounouData['score'] ?? 0.0).toDouble();
-    final nbAvis = nounouData['nbAvis'] ?? 0;
-    final bio = nounouData['bio'] ?? '';
-    final photoBase64 = nounouData['photoBase64'] as String?;
-    final diplomes = List<String>.from(nounouData['diplomes'] ?? []);
-    final competences = List<String>.from(nounouData['competences'] ?? []);
-    final experiences = List<String>.from(nounouData['experiences'] ?? []);
-    final ageGroups = List<String>.from(nounouData['ageGroups'] ?? []);
-    final disponibilites = List<String>.from(nounouData['disponibilites'] ?? []);
+    final prenom = widget.nounouData['prenom'] ?? '';
+    final nom = widget.nounouData['nom'] ?? '';
+    final ville = widget.nounouData['ville'] ?? 'Non renseignée';
+    final prix = widget.nounouData['prixHeure'];
+    final score = (widget.nounouData['score'] ?? 0.0).toDouble();
+    final nbAvis = widget.nounouData['nbAvis'] ?? 0;
+    final bio = widget.nounouData['bio'] ?? '';
+    final photoBase64 = widget.nounouData['photoBase64'] as String?;
+    final diplomes = List<String>.from(widget.nounouData['diplomes'] ?? []);
+    final competences = List<String>.from(widget.nounouData['competences'] ?? []);
+    final experiences = List<String>.from(widget.nounouData['experiences'] ?? []);
+    final ageGroups = List<String>.from(widget.nounouData['ageGroups'] ?? []);
+    final disponibilites = List<String>.from(widget.nounouData['disponibilites'] ?? []);
 
     return Scaffold(
       body: Container(
@@ -48,6 +188,24 @@ class NounouProfileScreen extends StatelessWidget {
                 decoration: BoxDecoration(color: Colors.white.withOpacity(0.9), shape: BoxShape.circle),
                 child: const Icon(Icons.arrow_back_ios_new, size: 16, color: AppColors.textDark)),
             ),
+            actions: _isOwnProfile ? [
+              GestureDetector(
+                onTap: _deleteAccount,
+                child: Container(
+                  margin: const EdgeInsets.all(8),
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: Colors.red.withOpacity(0.9),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: const Row(mainAxisSize: MainAxisSize.min, children: [
+                    Icon(Icons.delete_outline_rounded, color: Colors.white, size: 16),
+                    SizedBox(width: 4),
+                    Text('Supprimer', style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w700)),
+                  ]),
+                ),
+              ),
+            ] : null,
             flexibleSpace: FlexibleSpaceBar(
               background: Container(
                 decoration: const BoxDecoration(
@@ -106,7 +264,7 @@ class NounouProfileScreen extends StatelessWidget {
                   Expanded(
                     child: ElevatedButton.icon(
                       onPressed: () => Navigator.push(context, PageRouteBuilder(
-                        pageBuilder: (_, __, ___) => BookingScreen(nounouData: nounouData),
+                        pageBuilder: (_, __, ___) => BookingScreen(nounouData: widget.nounouData),
                         transitionsBuilder: (_, anim, __, child) => FadeTransition(opacity: anim, child: child),
                         transitionDuration: const Duration(milliseconds: 350),
                       )),
@@ -125,10 +283,10 @@ class NounouProfileScreen extends StatelessWidget {
                     child: ElevatedButton.icon(
                       onPressed: () => Navigator.push(context, PageRouteBuilder(
                         pageBuilder: (_, __, ___) => ChatScreen(
-                          otherUid: nounouData['uid'] ?? '',
+                          otherUid: widget.nounouData['uid'] ?? '',
                           otherPrenom: prenom,
                           otherNom: nom,
-                          otherPhotoBase64: nounouData['photoBase64'] as String?,
+                          otherPhotoBase64: widget.nounouData['photoBase64'] as String?,
                         ),
                         transitionsBuilder: (_, anim, __, child) => SlideTransition(
                           position: Tween<Offset>(begin: const Offset(1, 0), end: Offset.zero)
@@ -215,7 +373,7 @@ class NounouProfileScreen extends StatelessWidget {
                 // ── Avis depuis Firestore ──
                 const _SectionTitle(label: '💬 Avis'),
                 const SizedBox(height: 10),
-                AvisNounouSection(nounouUid: nounouData['uid'] ?? ''),
+                AvisNounouSection(nounouUid: widget.nounouData['uid'] ?? ''),
 
                 const SizedBox(height: 40),
               ]),

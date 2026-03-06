@@ -94,14 +94,49 @@ class _BabysitterHomeScreenState extends State<BabysitterHomeScreen> {
                 set(() { isLoading = true; errorMessage = null; });
                 try {
                   final user = _auth.currentUser!;
+                  final uid  = user.uid;
+                  final email = (user.email ?? '').toLowerCase();
+
+                  // 1. Réauthentifier
                   final cred = EmailAuthProvider.credential(email: user.email!, password: passwordCtrl.text);
                   await user.reauthenticateWithCredential(cred);
-                  await _db.collection('users').doc(user.uid).delete();
+
+                  // 2. Supprimer la sous-collection documents/
+                  try {
+                    final docsSnap = await FirebaseFirestore.instance
+                        .collection('users').doc(uid).collection('documents').get();
+                    for (final d in docsSnap.docs) await d.reference.delete();
+                  } catch (_) {}
+
+                  // 3. Enregistrer dans deleted_accounts pour bloquer réinscription
+                  try {
+                    await FirebaseFirestore.instance.collection('deleted_accounts').doc(uid).set({
+                      'uid': uid,
+                      'email': email,
+                      'prenom': _data['prenom'] ?? '',
+                      'nom': _data['nom'] ?? '',
+                      'deletedAt': FieldValue.serverTimestamp(),
+                      'deletedBySelf': true,
+                    });
+                  } catch (_) {}
+
+                  // 4. Supprimer le document Firestore
+                  await FirebaseFirestore.instance.collection('users').doc(uid).delete();
+
+                  // 5. Supprimer le compte Firebase Auth
                   await user.delete();
+
                   if (ctx.mounted) Navigator.of(ctx).pop();
                 } on FirebaseAuthException catch (e) {
-                  set(() { isLoading = false; errorMessage = (e.code == 'wrong-password' || e.code == 'invalid-credential') ? 'Mot de passe incorrect.' : 'Erreur.'; });
-                } catch (_) { set(() { isLoading = false; errorMessage = 'Erreur.'; }); }
+                  set(() {
+                    isLoading = false;
+                    errorMessage = (e.code == 'wrong-password' || e.code == 'invalid-credential')
+                        ? 'Mot de passe incorrect.'
+                        : 'Erreur Auth: ${e.code}';
+                  });
+                } catch (e) {
+                  set(() { isLoading = false; errorMessage = 'Erreur: ${e.toString().substring(0, e.toString().length.clamp(0, 80))}'; });
+                }
               },
               child: isLoading ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.red))
                   : const Text('Supprimer', style: TextStyle(color: Colors.red, fontWeight: FontWeight.w800)),

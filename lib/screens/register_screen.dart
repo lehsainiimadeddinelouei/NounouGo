@@ -135,24 +135,51 @@ class _RegisterScreenState extends State<RegisterScreen>
       return;
     }
 
-    // ── Envoyer les documents dans Firestore → admin les voit immédiatement ──
+    // ── Envoyer les documents dans Firestore → sous-collection séparée (évite limite 1MB) ──
     if (widget.role == 'Babysitter') {
       try {
         final uid = FirebaseAuth.instance.currentUser?.uid;
         if (uid != null) {
+          final docsRef = FirebaseFirestore.instance
+              .collection('users').doc(uid).collection('documents');
+
+          // Sauvegarder chaque doc séparément (chacun peut faire jusqu'à 1MB)
+          await docsRef.doc('diplome').set({
+            'base64':  _diplomeB64,
+            'name':    _diplomeNom,
+            'statut':  'en_attente',
+            'type':    'diplome',
+            'uploadedAt': FieldValue.serverTimestamp(),
+          });
+          await docsRef.doc('cv').set({
+            'base64':  _cvB64,
+            'name':    _cvNom,
+            'statut':  'en_attente',
+            'type':    'cv',
+            'uploadedAt': FieldValue.serverTimestamp(),
+          });
+          await docsRef.doc('cni').set({
+            'base64':  _cniB64,
+            'name':    _cniNom,
+            'statut':  'en_attente',
+            'type':    'cni',
+            'uploadedAt': FieldValue.serverTimestamp(),
+          });
+
+          // Mettre à jour le doc principal avec les statuts (sans les base64)
           await FirebaseFirestore.instance.collection('users').doc(uid).update({
-            'diplomePdfBase64':  _diplomeB64,
-            'diplomePdfName':    _diplomeNom,
-            'diplomePdfStatut':  'en_attente',
-            'cvBase64':          _cvB64,
-            'cvName':            _cvNom,
-            'cvStatut':          'en_attente',
-            'cniBase64':         _cniB64,
-            'cniName':           _cniNom,
-            'cniStatut':         'en_attente',
+            'diplomePdfName':   _diplomeNom,
+            'diplomePdfStatut': 'en_attente',
+            'cvName':           _cvNom,
+            'cvStatut':         'en_attente',
+            'cniName':          _cniNom,
+            'cniStatut':        'en_attente',
+            'hasDocuments':     true,
           });
         }
-      } catch (_) {}
+      } catch (e) {
+        // Ignorer les erreurs silencieusement
+      }
     }
 
     setState(() => _isLoading = false);

@@ -597,6 +597,12 @@ Réponds en JSON: {"valide": true/false, "confiance": 0-100, "type_doc": "CNI/Pa
     final field = docType == 'diplome' ? 'diplomePdfStatut'
         : docType == 'cv' ? 'cvStatut' : 'cniStatut';
     await FirebaseFirestore.instance.collection('users').doc(widget.uid).update({field: statut});
+    // Mettre à jour aussi la sous-collection
+    try {
+      await FirebaseFirestore.instance
+          .collection('users').doc(widget.uid).collection('documents').doc(docType)
+          .update({'statut': statut});
+    } catch (_) {}
 
     // Notifier la nounou
     final notifMsg = statut == 'validé'
@@ -620,32 +626,95 @@ Réponds en JSON: {"valide": true/false, "confiance": 0-100, "type_doc": "CNI/Pa
     }
   }
 
+  List<Map<String, dynamic>> _docs = [];
+  bool _docsLoaded = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadDocs();
+  }
+
+  Future<void> _loadDocs() async {
+    final d = widget.data;
+    final uid = d['uid'] as String? ?? '';
+    final loaded = <Map<String, dynamic>>[];
+
+    // Construire depuis champs principaux (noms + statuts)
+    final docsInfo = <Map<String, dynamic>>[];
+    if ((d['diplomePdfName'] as String? ?? '').isNotEmpty || (d['diplomePdfBase64'] as String? ?? '').isNotEmpty) {
+      docsInfo.add({'type': 'diplome', 'label': 'Diplôme', 'icon': Icons.school_rounded,
+        'color': AppColors.primaryPink, 'base64': d['diplomePdfBase64'] ?? '',
+        'name': d['diplomePdfName'] ?? 'diplome.pdf', 'statut': d['diplomePdfStatut'] ?? 'en_attente'});
+    }
+    if ((d['cvName'] as String? ?? '').isNotEmpty || (d['cvBase64'] as String? ?? '').isNotEmpty) {
+      docsInfo.add({'type': 'cv', 'label': 'CV', 'icon': Icons.description_rounded,
+        'color': AppColors.buttonBlue, 'base64': d['cvBase64'] ?? '',
+        'name': d['cvName'] ?? 'cv.pdf', 'statut': d['cvStatut'] ?? 'en_attente'});
+    }
+    if ((d['cniName'] as String? ?? '').isNotEmpty || (d['cniBase64'] as String? ?? '').isNotEmpty) {
+      docsInfo.add({'type': 'cni', 'label': "Carte d'identité", 'icon': Icons.badge_rounded,
+        'color': Colors.teal, 'base64': d['cniBase64'] ?? '',
+        'name': d['cniName'] ?? 'cni.pdf', 'statut': d['cniStatut'] ?? 'en_attente'});
+    }
+
+    if (uid.isNotEmpty) {
+      try {
+        final subSnap = await FirebaseFirestore.instance
+            .collection('users').doc(uid).collection('documents').get();
+        for (final subDoc in subSnap.docs) {
+          final sd = subDoc.data();
+          final type = sd['type'] as String? ?? subDoc.id;
+          final info = docsInfo.firstWhere((i) => i['type'] == type, orElse: () => {});
+          if (info.isEmpty) {
+            loaded.add({'type': type,
+              'label': type == 'diplome' ? 'Diplôme' : type == 'cv' ? 'CV' : "Carte d'identité",
+              'icon': type == 'diplome' ? Icons.school_rounded : type == 'cv' ? Icons.description_rounded : Icons.badge_rounded,
+              'color': type == 'diplome' ? AppColors.primaryPink : type == 'cv' ? AppColors.buttonBlue : Colors.teal,
+              'base64': sd['base64'] ?? '', 'name': sd['name'] ?? '$type.pdf',
+              'statut': sd['statut'] ?? 'en_attente'});
+          } else {
+            loaded.add({...info, 'base64': sd['base64'] ?? info['base64'] ?? ''});
+          }
+        }
+        // Ajouter les docs anciens comptes (base64 dans doc principal)
+        for (final info in docsInfo) {
+          if (!loaded.any((x) => x['type'] == info['type'])) {
+            if ((info['base64'] as String).isNotEmpty) loaded.add(info);
+          }
+        }
+      } catch (_) {
+        // Fallback: champs principaux
+        loaded.addAll(docsInfo.where((i) => (i['base64'] as String).isNotEmpty));
+      }
+    } else {
+      loaded.addAll(docsInfo.where((i) => (i['base64'] as String).isNotEmpty));
+    }
+
+    if (mounted) setState(() { _docs = loaded; _docsLoaded = true; });
+  }
+
   @override
   Widget build(BuildContext context) {
     final d = widget.data;
+    final uid = d['uid'] as String? ?? '';
     final prenom = d['prenom'] ?? '';
     final nom = d['nom'] ?? '';
 
-    final docs = <Map<String, dynamic>>[];
-    // Inclure tous les docs qui ont un fichier, peu importe le statut
-    if ((d['diplomePdfBase64'] as String? ?? '').isNotEmpty) docs.add({
-      'type': 'diplome', 'label': 'Diplôme', 'icon': Icons.school_rounded,
-      'color': AppColors.primaryPink, 'base64': d['diplomePdfBase64'],
-      'name': d['diplomePdfName'] ?? 'diplome.pdf',
-      'statut': d['diplomePdfStatut'] ?? 'en_attente',
-    });
-    if ((d['cvBase64'] as String? ?? '').isNotEmpty) docs.add({
-      'type': 'cv', 'label': 'CV', 'icon': Icons.description_rounded,
-      'color': AppColors.buttonBlue, 'base64': d['cvBase64'],
-      'name': d['cvName'] ?? 'cv.pdf',
-      'statut': d['cvStatut'] ?? 'en_attente',
-    });
-    if ((d['cniBase64'] as String? ?? '').isNotEmpty) docs.add({
-      'type': 'cni', 'label': "Carte d'identité", 'icon': Icons.badge_rounded,
-      'color': Colors.teal, 'base64': d['cniBase64'],
-      'name': d['cniName'] ?? 'cni.pdf',
-      'statut': d['cniStatut'] ?? 'en_attente',
-    });
+    // Docs chargés dans initState/_loadDocs
+    final docs = _docs;
+
+    if (!_docsLoaded) {
+      return Container(
+        margin: const EdgeInsets.only(bottom: 14),
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: Colors.white.withOpacity(0.07),
+          borderRadius: BorderRadius.circular(18),
+        ),
+        child: const Center(child: CircularProgressIndicator(color: AppColors.primaryPink)),
+      );
+    }
 
     return Container(
       margin: const EdgeInsets.only(bottom: 14),
@@ -1308,13 +1377,14 @@ class _UserAdminCard extends StatelessWidget {
         ],
       ),
     );
-    if (confirmed == true) {
-      final email = (data['email'] ?? '').toString().toLowerCase();
-      final prenom = data['prenom'] ?? '';
-      final nom = data['nom'] ?? '';
+    if (confirmed != true) return;
 
-      // 1. Enregistrer dans deleted_accounts pour bloquer réinscription
-      //    et permettre à l'admin de libérer l'email si besoin
+    final email  = (data['email'] ?? '').toString().toLowerCase();
+    final prenom = data['prenom'] ?? '';
+    final nom    = data['nom'] ?? '';
+
+    try {
+      // 1. Enregistrer dans deleted_accounts
       if (email.isNotEmpty) {
         await FirebaseFirestore.instance
             .collection('deleted_accounts')
@@ -1328,14 +1398,35 @@ class _UserAdminCard extends StatelessWidget {
         });
       }
 
-      // 2. Supprimer le document Firestore utilisateur
+      // 2. Supprimer la sous-collection documents (diplôme, CV, CNI)
+      try {
+        final docsSnap = await FirebaseFirestore.instance
+            .collection('users').doc(uid).collection('documents').get();
+        for (final d in docsSnap.docs) {
+          await d.reference.delete();
+        }
+      } catch (_) {}
+
+      // 3. Supprimer le document utilisateur principal
       await FirebaseFirestore.instance.collection('users').doc(uid).delete();
 
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text("✅ Compte supprimé. Email visible dans l'onglet \"🗑️\""),
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('✅ Compte de $prenom $nom supprimé.'),
           backgroundColor: Colors.green,
           behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          margin: const EdgeInsets.all(16),
+        ));
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('Erreur suppression: ${e.toString().substring(0, e.toString().length.clamp(0, 120))}'),
+          backgroundColor: Colors.red,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          margin: const EdgeInsets.all(16),
         ));
       }
     }
