@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'dart:convert';
+import 'package:flutter/services.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../theme/app_theme.dart';
@@ -626,20 +627,24 @@ Réponds en JSON: {"valide": true/false, "confiance": 0-100, "type_doc": "CNI/Pa
     final nom = d['nom'] ?? '';
 
     final docs = <Map<String, dynamic>>[];
-    if (d['diplomePdfStatut'] == 'en_attente') docs.add({
+    // Inclure tous les docs qui ont un fichier, peu importe le statut
+    if ((d['diplomePdfBase64'] as String? ?? '').isNotEmpty) docs.add({
       'type': 'diplome', 'label': 'Diplôme', 'icon': Icons.school_rounded,
       'color': AppColors.primaryPink, 'base64': d['diplomePdfBase64'],
       'name': d['diplomePdfName'] ?? 'diplome.pdf',
+      'statut': d['diplomePdfStatut'] ?? 'en_attente',
     });
-    if (d['cvStatut'] == 'en_attente') docs.add({
+    if ((d['cvBase64'] as String? ?? '').isNotEmpty) docs.add({
       'type': 'cv', 'label': 'CV', 'icon': Icons.description_rounded,
       'color': AppColors.buttonBlue, 'base64': d['cvBase64'],
       'name': d['cvName'] ?? 'cv.pdf',
+      'statut': d['cvStatut'] ?? 'en_attente',
     });
-    if (d['cniStatut'] == 'en_attente') docs.add({
+    if ((d['cniBase64'] as String? ?? '').isNotEmpty) docs.add({
       'type': 'cni', 'label': "Carte d'identité", 'icon': Icons.badge_rounded,
       'color': Colors.teal, 'base64': d['cniBase64'],
       'name': d['cniName'] ?? 'cni.pdf',
+      'statut': d['cniStatut'] ?? 'en_attente',
     });
 
     return Container(
@@ -664,8 +669,14 @@ Réponds en JSON: {"valide": true/false, "confiance": 0-100, "type_doc": "CNI/Pa
               const SizedBox(width: 12),
               Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Text('$prenom $nom', style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: Colors.white)),
-                Text('${docs.length} document(s) en attente',
-                    style: TextStyle(fontSize: 12, color: Colors.orange.shade300)),
+                Builder(builder: (ctx) {
+                  final enAttente = docs.where((d) => d['statut'] == 'en_attente').length;
+                  final total = docs.length;
+                  return Text(
+                    enAttente > 0 ? '$enAttente doc(s) en attente · $total au total' : '$total doc(s) soumis',
+                    style: TextStyle(fontSize: 12, color: enAttente > 0 ? Colors.orange.shade300 : Colors.green.shade300),
+                  );
+                }),
               ])),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
@@ -755,27 +766,44 @@ class _DocReviewCard extends StatelessWidget {
 
         const SizedBox(height: 10),
 
-        // ── Bouton Consulter le document ──
-        if (((docInfo['base64'] as String?) ?? '').isNotEmpty)
-          GestureDetector(
-            onTap: () => _showDocViewer(context, docInfo),
-            child: Container(
-              width: double.infinity,
-              margin: const EdgeInsets.only(bottom: 10),
-              padding: const EdgeInsets.symmetric(vertical: 11),
-              decoration: BoxDecoration(
-                color: color.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: color.withOpacity(0.35)),
-              ),
-              child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                Icon(Icons.visibility_rounded, color: color, size: 16),
-                const SizedBox(width: 8),
-                Text('👁️  Ouvrir le document',
-                    style: TextStyle(fontSize: 13, color: color, fontWeight: FontWeight.w700)),
-              ]),
+        // ── Badge statut ──
+        Builder(builder: (ctx) {
+          final statut = (docInfo['statut'] as String? ?? 'en_attente');
+          final statutColor = statut == 'validé' ? Colors.green : statut == 'refusé' ? Colors.red : Colors.orange;
+          final statutLabel = statut == 'validé' ? '✅ Validé' : statut == 'refusé' ? '❌ Refusé' : '⏳ En attente';
+          return Container(
+            margin: const EdgeInsets.only(bottom: 10),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            decoration: BoxDecoration(
+              color: statutColor.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: statutColor.withOpacity(0.35)),
             ),
+            child: Text(statutLabel,
+                style: TextStyle(fontSize: 12, color: statutColor, fontWeight: FontWeight.w700)),
+          );
+        }),
+
+        // ── Bouton Ouvrir le document ──
+        GestureDetector(
+          onTap: () => _showDocViewer(context, docInfo),
+          child: Container(
+            width: double.infinity,
+            margin: const EdgeInsets.only(bottom: 10),
+            padding: const EdgeInsets.symmetric(vertical: 11),
+            decoration: BoxDecoration(
+              color: color.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: color.withOpacity(0.35)),
+            ),
+            child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+              Icon(Icons.visibility_rounded, color: color, size: 16),
+              const SizedBox(width: 8),
+              Text('👁️  Ouvrir le document',
+                  style: TextStyle(fontSize: 13, color: color, fontWeight: FontWeight.w700)),
+            ]),
           ),
+        ),
 
         // Bouton analyser IA
         GestureDetector(
@@ -956,46 +984,172 @@ class _DocReviewCard extends StatelessWidget {
                           ),
                         ),
                       )
-                    : Center(
-                        child: Padding(
-                          padding: const EdgeInsets.all(24),
-                          child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-                            Container(width: 90, height: 90,
-                                decoration: BoxDecoration(
-                                    color: color.withOpacity(0.12),
-                                    shape: BoxShape.circle,
-                                    border: Border.all(color: color.withOpacity(0.3), width: 2)),
-                                child: Icon(Icons.picture_as_pdf_rounded, color: color, size: 44)),
-                            const SizedBox(height: 20),
-                            Text(fileName,
-                                style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: Colors.white),
-                                textAlign: TextAlign.center),
-                            const SizedBox(height: 10),
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                              decoration: BoxDecoration(
-                                color: color.withOpacity(0.1),
-                                borderRadius: BorderRadius.circular(20),
-                                border: Border.all(color: color.withOpacity(0.3)),
-                              ),
-                              child: Text(
-                                'PDF reçu · ${(b64.length * 3 / 4 / 1024).toStringAsFixed(0)} Ko',
-                                style: TextStyle(fontSize: 12, color: color, fontWeight: FontWeight.w600),
-                              ),
-                            ),
-                            const SizedBox(height: 16),
-                            const Text(
-                              "L'aperçu PDF n'est pas disponible dans l'app.\nLe document a bien été reçu et stocké.",
-                              style: TextStyle(fontSize: 13, color: Colors.white38, height: 1.6),
-                              textAlign: TextAlign.center,
-                            ),
-                          ]),
-                        ),
-                      ),
+                    : _PdfDownloadSection(b64: b64, fileName: fileName, color: color),
           ),
         ]),
       ),
     );
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
+// Widget PDF : télécharge le fichier sur l'appareil
+// ═══════════════════════════════════════════════════════════
+class _PdfDownloadSection extends StatefulWidget {
+  final String b64, fileName;
+  final Color color;
+  const _PdfDownloadSection({required this.b64, required this.fileName, required this.color});
+  @override
+  State<_PdfDownloadSection> createState() => _PdfDownloadSectionState();
+}
+
+class _PdfDownloadSectionState extends State<_PdfDownloadSection> {
+  bool    _saving    = false;
+  String? _savedPath = null;
+  String? _error     = null;
+
+  Future<void> _save() async {
+    setState(() { _saving = true; _error = null; _savedPath = null; });
+    try {
+      final bytes = base64Decode(widget.b64);
+      // Sur Android: dossier Downloads accessible par l'utilisateur
+      Directory dir;
+      if (Platform.isAndroid) {
+        dir = Directory('/storage/emulated/0/Download/NounouGo');
+      } else {
+        dir = Directory('${Directory.systemTemp.path}/NounouGo');
+      }
+      if (!await dir.exists()) await dir.create(recursive: true);
+      final path = '${dir.path}/${widget.fileName}';
+      await File(path).writeAsBytes(bytes);
+      if (mounted) setState(() { _saving = false; _savedPath = path; });
+    } catch (e) {
+      if (mounted) setState(() { _saving = false; _error = e.toString(); });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final sizeKo = (widget.b64.length * 3 / 4 / 1024).toStringAsFixed(0);
+    return Center(child: SingleChildScrollView(child: Padding(
+      padding: const EdgeInsets.all(28),
+      child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+        // Icône PDF
+        Container(width: 96, height: 96,
+          decoration: BoxDecoration(
+            color: widget.color.withOpacity(0.12), shape: BoxShape.circle,
+            border: Border.all(color: widget.color.withOpacity(0.35), width: 2)),
+          child: Icon(Icons.picture_as_pdf_rounded, color: widget.color, size: 46)),
+        const SizedBox(height: 16),
+
+        // Nom fichier
+        Text(widget.fileName,
+          style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: Colors.white),
+          textAlign: TextAlign.center),
+        const SizedBox(height: 8),
+
+        // Taille
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+          decoration: BoxDecoration(
+            color: widget.color.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: widget.color.withOpacity(0.35)),
+          ),
+          child: Text('PDF · $sizeKo Ko',
+            style: TextStyle(fontSize: 12, color: widget.color, fontWeight: FontWeight.w600)),
+        ),
+        const SizedBox(height: 24),
+
+        // ── État: pas encore téléchargé ──
+        if (_savedPath == null) ...[
+          // Bouton télécharger
+          GestureDetector(
+            onTap: _saving ? null : _save,
+            child: Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(vertical: 15),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(colors: [widget.color.withOpacity(0.8), widget.color]),
+                borderRadius: BorderRadius.circular(14),
+                boxShadow: [BoxShadow(color: widget.color.withOpacity(0.35), blurRadius: 14, offset: const Offset(0, 5))],
+              ),
+              child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                if (_saving)
+                  const SizedBox(width: 20, height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2.5, color: Colors.white))
+                else
+                  const Icon(Icons.download_rounded, color: Colors.white, size: 22),
+                const SizedBox(width: 10),
+                Text(_saving ? 'Téléchargement...' : '⬇️  Télécharger le PDF',
+                  style: const TextStyle(fontSize: 15, color: Colors.white, fontWeight: FontWeight.w800)),
+              ]),
+            ),
+          ),
+          if (_error != null) ...[
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(color: Colors.red.withOpacity(0.1), borderRadius: BorderRadius.circular(10)),
+              child: Text('Erreur: $_error',
+                style: const TextStyle(fontSize: 11, color: Colors.red), textAlign: TextAlign.center),
+            ),
+          ],
+        ],
+
+        // ── État: téléchargé ──
+        if (_savedPath != null) ...[
+          Container(
+            padding: const EdgeInsets.all(18),
+            decoration: BoxDecoration(
+              color: Colors.green.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: Colors.green.withOpacity(0.35)),
+            ),
+            child: Column(children: [
+              const Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                Icon(Icons.check_circle_rounded, color: Colors.green, size: 22),
+                SizedBox(width: 8),
+                Text('Fichier sauvegardé !',
+                  style: TextStyle(fontSize: 15, color: Colors.green, fontWeight: FontWeight.w800)),
+              ]),
+              const SizedBox(height: 10),
+              Text(_savedPath!, style: const TextStyle(fontSize: 11, color: Colors.white38),
+                textAlign: TextAlign.center),
+              const SizedBox(height: 12),
+              // Copier chemin
+              GestureDetector(
+                onTap: () {
+                  Clipboard.setData(ClipboardData(text: _savedPath!));
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                    content: Text('Chemin copié dans le presse-papier'),
+                    behavior: SnackBarBehavior.floating,
+                    duration: Duration(seconds: 2),
+                  ));
+                },
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  decoration: BoxDecoration(color: Colors.white12, borderRadius: BorderRadius.circular(10)),
+                  child: const Row(mainAxisSize: MainAxisSize.min, children: [
+                    Icon(Icons.copy_rounded, color: Colors.white54, size: 14),
+                    SizedBox(width: 6),
+                    Text('Copier le chemin', style: TextStyle(fontSize: 12, color: Colors.white54)),
+                  ]),
+                ),
+              ),
+            ]),
+          ),
+          const SizedBox(height: 12),
+          // Télécharger à nouveau
+          GestureDetector(
+            onTap: _save,
+            child: Text('Télécharger à nouveau',
+              style: TextStyle(fontSize: 12, color: widget.color.withOpacity(0.7),
+                  decoration: TextDecoration.underline)),
+          ),
+        ],
+      ]),
+    )));
   }
 }
 

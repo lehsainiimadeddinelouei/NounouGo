@@ -332,9 +332,16 @@ class _ProfilTab extends StatelessWidget {
             ),
           ),
         ),
+        // ── Banner email non vérifié ──
+        if (FirebaseAuth.instance.currentUser?.emailVerified == false)
+          SliverToBoxAdapter(child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+            child: _EmailVerifBanner(),
+          )),
+
         // Banner statut autorisation
         SliverToBoxAdapter(child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
           child: Container(
             padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(
@@ -444,4 +451,125 @@ class _NavItemMsgBadge extends StatelessWidget {
       ),
     ]),
   );
+}
+
+
+// ═══════════════════════════════════════════════════════════
+// Banner vérification email (affiché tant que non vérifié)
+// ═══════════════════════════════════════════════════════════
+class _EmailVerifBanner extends StatefulWidget {
+  @override
+  State<_EmailVerifBanner> createState() => _EmailVerifBannerState();
+}
+
+class _EmailVerifBannerState extends State<_EmailVerifBanner> {
+  bool _sending = false;
+  bool _sent    = false;
+
+  Future<void> _resend() async {
+    if (_sending || _sent) return;
+    setState(() => _sending = true);
+    try {
+      await FirebaseAuth.instance.currentUser?.sendEmailVerification();
+      if (mounted) {
+        setState(() { _sending = false; _sent = true; });
+        // Reset le message "envoyé" après 5s
+        Future.delayed(const Duration(seconds: 5), () {
+          if (mounted) setState(() => _sent = false);
+        });
+      }
+    } catch (_) {
+      if (mounted) setState(() => _sending = false);
+    }
+  }
+
+  Future<void> _checkVerified() async {
+    await FirebaseAuth.instance.currentUser?.reload();
+    if (FirebaseAuth.instance.currentUser?.emailVerified == true) {
+      try {
+        final uid = FirebaseAuth.instance.currentUser!.uid;
+        await FirebaseFirestore.instance.collection('users').doc(uid).update({'emailVerified': true});
+      } catch (_) {}
+      if (mounted) setState(() {});
+    } else {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text("Email pas encore vérifié. Vérifiez votre boite mail."),
+          backgroundColor: Colors.orange,
+          behavior: SnackBarBehavior.floating,
+        ));
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.amber.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: Colors.amber.withOpacity(0.45)),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          const Icon(Icons.mark_email_unread_rounded, color: Colors.amber, size: 18),
+          const SizedBox(width: 8),
+          const Expanded(child: Text('Email non vérifié',
+              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: Colors.amber))),
+        ]),
+        const SizedBox(height: 5),
+        const Text(
+          'Vérifiez votre boite mail et cliquez sur le lien de confirmation pour activer votre compte.',
+          style: TextStyle(fontSize: 12, color: Colors.black54, height: 1.4),
+        ),
+        const SizedBox(height: 10),
+        Row(children: [
+          // Renvoyer email
+          Expanded(child: GestureDetector(
+            onTap: _resend,
+            child: Container(
+              padding: const EdgeInsets.symmetric(vertical: 9),
+              decoration: BoxDecoration(
+                color: Colors.amber.withOpacity(0.15),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: Colors.amber.withOpacity(0.5)),
+              ),
+              child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                if (_sending)
+                  const SizedBox(width: 14, height: 14,
+                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.amber))
+                else
+                  Icon(_sent ? Icons.check_rounded : Icons.send_rounded, color: Colors.amber, size: 14),
+                const SizedBox(width: 6),
+                Text(
+                  _sent ? 'Envoyé !' : (_sending ? 'Envoi...' : 'Renvoyer'),
+                  style: const TextStyle(fontSize: 12, color: Colors.amber, fontWeight: FontWeight.w700),
+                ),
+              ]),
+            ),
+          )),
+          const SizedBox(width: 10),
+          // Vérifier
+          Expanded(child: GestureDetector(
+            onTap: _checkVerified,
+            child: Container(
+              padding: const EdgeInsets.symmetric(vertical: 9),
+              decoration: BoxDecoration(
+                color: Colors.green.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: Colors.green.withOpacity(0.35)),
+              ),
+              child: const Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                Icon(Icons.refresh_rounded, color: Colors.green, size: 14),
+                SizedBox(width: 6),
+                Text("J'ai vérifié",
+                    style: TextStyle(fontSize: 12, color: Colors.green, fontWeight: FontWeight.w700)),
+              ]),
+            ),
+          )),
+        ]),
+      ]),
+    );
+  }
 }
