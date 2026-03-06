@@ -349,38 +349,6 @@ class _BabysitterSetupScreenState extends State<BabysitterSetupScreen>
     if (_diplomes.isEmpty) _EmptyHint(text: 'Aucun diplôme ajouté'),
     const SizedBox(height: 24),
 
-    // ── Documents officiels ──
-    const Text('Documents officiels', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: AppColors.textDark)),
-    const SizedBox(height: 6),
-    const Text('Optionnel, mais fortement recommandé pour inspirer confiance',
-        style: TextStyle(fontSize: 13, color: AppColors.textGrey)),
-    const SizedBox(height: 14),
-
-    // Diplôme PDF
-    _DocumentUploadCard(
-      title: 'Diplôme (PDF)',
-      subtitle: 'Licence, CAP Petite Enfance, etc.',
-      icon: Icons.school_rounded,
-      color: AppColors.primaryPink,
-      fileName: _diplomePdfName,
-      isLoading: _loadingPdf,
-      onTap: () => _pickPdf('diplome'),
-      onRemove: () => setState(() { _diplomePdfBase64 = null; _diplomePdfName = null; }),
-    ),
-    const SizedBox(height: 12),
-
-    // CNI
-    _DocumentUploadCard(
-      title: "Carte d'identité",
-      subtitle: 'PDF, JPG ou PNG acceptés',
-      icon: Icons.badge_rounded,
-      color: AppColors.buttonBlue,
-      fileName: _cniName,
-      isLoading: _loadingPdf,
-      onTap: () => _pickPdf('cni'),
-      onRemove: () => setState(() { _cniBase64 = null; _cniName = null; }),
-    ),
-    const SizedBox(height: 20),
   ]);
 
   // ── Étape 3 : Compétences ──

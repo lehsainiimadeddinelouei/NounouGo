@@ -9,16 +9,20 @@ service cloud.firestore {
     }
 
     match /users/{uid} {
-      // Tout utilisateur connecté peut lire les profils (pour chercher des nounous)
       allow read: if isAuth();
-      // Admin peut tout faire
       allow write: if isAdmin();
-      // Propriétaire peut modifier son propre profil
       allow write: if isAuth() && isOwner(uid);
-      // N'importe qui peut mettre à jour score et nbAvis
       allow update: if isAuth() &&
         request.resource.data.diff(resource.data).affectedKeys()
           .hasOnly(['score', 'nbAvis']);
+    }
+
+    // ── Comptes supprimés par l'admin ──
+    // L'admin peut lire/écrire/supprimer
+    // Tout utilisateur connecté peut lire (pour vérif à l'inscription)
+    match /deleted_accounts/{uid} {
+      allow read: if isAuth();
+      allow write, delete: if isAdmin();
     }
 
     match /otp_codes/{uid} {
@@ -83,13 +87,5 @@ service cloud.firestore {
       allow delete: if isAuth() &&
         resource.data.parentUid == request.auth.uid;
     }
-
-    // ── Documents uploadés par les nounous ──
-    // Les documents (PDF base64) sont stockés dans users/{uid}
-    // donc déjà couverts par la règle users ci-dessus.
-    // La nounou voit ses propres docs via isOwner(uid)
-    // L'admin voit tous les docs via isAdmin()
-    // Le parent voit les infos publiques via read: isAuth()
-    // Les champs sensibles (base64 PDF) sont accessibles car read est ouvert aux auth
   }
 }

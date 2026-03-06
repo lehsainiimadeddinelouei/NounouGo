@@ -72,9 +72,15 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen>
             opacity: _fadeAnimation,
             child: SlideTransition(
               position: _slideAnimation,
-              child: Padding(
+              child: SingleChildScrollView(
                 padding: const EdgeInsets.symmetric(horizontal: 24),
-                child: Column(
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(
+                    minHeight: MediaQuery.of(context).size.height -
+                        MediaQuery.of(context).padding.top -
+                        MediaQuery.of(context).padding.bottom,
+                  ),
+                  child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     const SizedBox(height: 40),
@@ -146,6 +152,7 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen>
                     ),
                     const SizedBox(height: 40),
                   ],
+                  ),
                 ),
               ),
             ),

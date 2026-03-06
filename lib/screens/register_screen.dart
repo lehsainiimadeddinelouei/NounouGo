@@ -207,31 +207,7 @@ class _RegisterScreenState extends State<RegisterScreen>
                       ]),
                     ),
                     const SizedBox(height: 20),
-                    if (!isParent) ...[
-                      _SectionLabel(label: 'Votre profil nounou'),
-                      const SizedBox(height: 12),
-                      Container(
-                        padding: const EdgeInsets.all(20),
-                        decoration: BoxDecoration(
-                          color: Colors.white, borderRadius: BorderRadius.circular(20),
-                          boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.06), blurRadius: 24, offset: const Offset(0, 8))],
-                        ),
-                        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                          const Text('Tranches d\'âge gardés',
-                              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.textGrey)),
-                          const SizedBox(height: 10),
-                          _AgeGroupSelector(
-                            accentColor: accentColor,
-                            selected: _selectedAgeGroups,
-                            onChanged: (g) => setState(() {
-                              if (_selectedAgeGroups.contains(g)) _selectedAgeGroups.remove(g);
-                              else _selectedAgeGroups.add(g);
-                            }),
-                          ),
-                        ]),
-                      ),
-                      const SizedBox(height: 20),
-                    ],
+
                     _SectionLabel(label: 'Sécurité'),
                     const SizedBox(height: 12),
                     Container(
@@ -326,32 +302,7 @@ class _SectionLabel extends StatelessWidget {
       style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.textGrey, letterSpacing: 1.2));
 }
 
-class _AgeGroupSelector extends StatelessWidget {
-  final Color accentColor;
-  final Set<String> selected;
-  final Function(String) onChanged;
-  const _AgeGroupSelector({required this.accentColor, required this.selected, required this.onChanged});
-  @override
-  Widget build(BuildContext context) {
-    const groups = ['0-1 an', '1-3 ans', '3-6 ans', '6-12 ans', '12+ ans'];
-    return Wrap(spacing: 8, runSpacing: 8, children: groups.map((g) {
-      final isSelected = selected.contains(g);
-      return GestureDetector(
-        onTap: () => onChanged(g),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 200),
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-          decoration: BoxDecoration(
-            color: isSelected ? accentColor : accentColor.withOpacity(0.08),
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: isSelected ? accentColor : accentColor.withOpacity(0.2)),
-          ),
-          child: Text(g, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: isSelected ? Colors.white : accentColor)),
-        ),
-      );
-    }).toList());
-  }
-}
+
 
 class _PasswordStrengthIndicator extends StatefulWidget {
   final TextEditingController controller;

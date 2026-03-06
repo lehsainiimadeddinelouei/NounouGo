@@ -63,9 +63,10 @@ class _AdminScreenState extends State<AdminScreen> {
                 borderRadius: BorderRadius.circular(16),
               ),
               child: Row(children: [
-                _TabBtn(label: '📊 Stats', index: 0, current: _tab, onTap: (i) => setState(() => _tab = i)),
-                _TabBtn(label: '📄 Documents', index: 1, current: _tab, onTap: (i) => setState(() => _tab = i)),
-                _TabBtn(label: '👥 Utilisateurs', index: 2, current: _tab, onTap: (i) => setState(() => _tab = i)),
+                Expanded(child: _TabBtn(label: '📊', index: 0, current: _tab, onTap: (i) => setState(() => _tab = i))),
+                Expanded(child: _TabBtn(label: '📄 Docs', index: 1, current: _tab, onTap: (i) => setState(() => _tab = i))),
+                Expanded(child: _TabBtn(label: '👥 Users', index: 2, current: _tab, onTap: (i) => setState(() => _tab = i))),
+                Expanded(child: _TabBtn(label: '🗑️ Supp.', index: 3, current: _tab, onTap: (i) => setState(() => _tab = i))),
               ]),
             ),
           ),
@@ -73,10 +74,11 @@ class _AdminScreenState extends State<AdminScreen> {
           const SizedBox(height: 16),
 
           // ── Contenu ──
-          Expanded(child: IndexedStack(index: _tab, children: const [
-            _StatsTab(),
-            _DocumentsTab(),
-            _UsersTab(),
+          Expanded(child: IndexedStack(index: _tab, children: [
+            const _StatsTab(),
+            const _DocumentsTab(),
+            const _UsersTab(),
+            const _DeletedAccountsTab(),
           ])),
         ])),
       ),
@@ -91,11 +93,11 @@ class _TabBtn extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final selected = index == current;
-    return Expanded(child: GestureDetector(
+    return GestureDetector(
       onTap: () => onTap(index),
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
-        padding: const EdgeInsets.symmetric(vertical: 10),
+        padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 14),
         decoration: BoxDecoration(
           color: selected ? AppColors.primaryPink : Colors.transparent,
           borderRadius: BorderRadius.circular(12),
@@ -104,7 +106,7 @@ class _TabBtn extends StatelessWidget {
             style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700,
                 color: selected ? Colors.white : Colors.white54)),
       ),
-    ));
+    );
   }
 }
 
@@ -751,7 +753,29 @@ class _DocReviewCard extends StatelessWidget {
               maxLines: 1, overflow: TextOverflow.ellipsis),
         ]),
 
-        const SizedBox(height: 12),
+        const SizedBox(height: 10),
+
+        // ── Bouton Consulter le document ──
+        if (((docInfo['base64'] as String?) ?? '').isNotEmpty)
+          GestureDetector(
+            onTap: () => _showDocViewer(context, docInfo),
+            child: Container(
+              width: double.infinity,
+              margin: const EdgeInsets.only(bottom: 10),
+              padding: const EdgeInsets.symmetric(vertical: 11),
+              decoration: BoxDecoration(
+                color: color.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: color.withOpacity(0.35)),
+              ),
+              child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                Icon(Icons.visibility_rounded, color: color, size: 16),
+                const SizedBox(width: 8),
+                Text('👁️  Ouvrir le document',
+                    style: TextStyle(fontSize: 13, color: color, fontWeight: FontWeight.w700)),
+              ]),
+            ),
+          ),
 
         // Bouton analyser IA
         GestureDetector(
@@ -866,6 +890,112 @@ class _DocReviewCard extends StatelessWidget {
     if (r.contains('Valider')) return Colors.green;
     if (r.contains('Refuser')) return Colors.red;
     return Colors.orange;
+  }
+
+  void _showDocViewer(BuildContext context, Map<String, dynamic> docInfo) {
+    final b64 = (docInfo['base64'] as String?) ?? '';
+    final fileName = (docInfo['name'] as String?) ?? '';
+    final color = docInfo['color'] as Color;
+    final isImage = fileName.toLowerCase().endsWith('.jpg') ||
+        fileName.toLowerCase().endsWith('.jpeg') ||
+        fileName.toLowerCase().endsWith('.png');
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => Container(
+        height: MediaQuery.of(context).size.height * 0.88,
+        decoration: const BoxDecoration(
+          color: Color(0xFF0F0F1A),
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        child: Column(children: [
+          // Handle
+          Container(margin: const EdgeInsets.only(top: 12), width: 40, height: 4,
+              decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(2))),
+          // Header
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 14, 20, 10),
+            child: Row(children: [
+              Container(width: 36, height: 36,
+                  decoration: BoxDecoration(color: color.withOpacity(0.15), borderRadius: BorderRadius.circular(10)),
+                  child: Icon(docInfo['icon'] as IconData, color: color, size: 18)),
+              const SizedBox(width: 12),
+              Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(docInfo['label'] as String,
+                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: color)),
+                Text(fileName,
+                    style: const TextStyle(fontSize: 11, color: Colors.white38),
+                    maxLines: 1, overflow: TextOverflow.ellipsis),
+              ])),
+              GestureDetector(
+                onTap: () => Navigator.pop(context),
+                child: Container(padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(color: Colors.white12, borderRadius: BorderRadius.circular(10)),
+                    child: const Icon(Icons.close_rounded, color: Colors.white70, size: 18)),
+              ),
+            ]),
+          ),
+          const Divider(color: Colors.white12, height: 1),
+          // Contenu
+          Expanded(
+            child: b64.isEmpty
+                ? const Center(child: Text('Document non disponible',
+                    style: TextStyle(color: Colors.white38, fontSize: 14)))
+                : isImage
+                    ? InteractiveViewer(
+                        minScale: 0.5, maxScale: 5.0,
+                        child: Center(
+                          child: Padding(
+                            padding: const EdgeInsets.all(12),
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(12),
+                              child: Image.memory(base64Decode(b64), fit: BoxFit.contain),
+                            ),
+                          ),
+                        ),
+                      )
+                    : Center(
+                        child: Padding(
+                          padding: const EdgeInsets.all(24),
+                          child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+                            Container(width: 90, height: 90,
+                                decoration: BoxDecoration(
+                                    color: color.withOpacity(0.12),
+                                    shape: BoxShape.circle,
+                                    border: Border.all(color: color.withOpacity(0.3), width: 2)),
+                                child: Icon(Icons.picture_as_pdf_rounded, color: color, size: 44)),
+                            const SizedBox(height: 20),
+                            Text(fileName,
+                                style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: Colors.white),
+                                textAlign: TextAlign.center),
+                            const SizedBox(height: 10),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                              decoration: BoxDecoration(
+                                color: color.withOpacity(0.1),
+                                borderRadius: BorderRadius.circular(20),
+                                border: Border.all(color: color.withOpacity(0.3)),
+                              ),
+                              child: Text(
+                                'PDF reçu · ${(b64.length * 3 / 4 / 1024).toStringAsFixed(0)} Ko',
+                                style: TextStyle(fontSize: 12, color: color, fontWeight: FontWeight.w600),
+                              ),
+                            ),
+                            const SizedBox(height: 16),
+                            const Text(
+                              "L'aperçu PDF n'est pas disponible dans l'app.\nLe document a bien été reçu et stocké.",
+                              style: TextStyle(fontSize: 13, color: Colors.white38, height: 1.6),
+                              textAlign: TextAlign.center,
+                            ),
+                          ]),
+                        ),
+                      ),
+          ),
+        ]),
+      ),
+    );
   }
 }
 
@@ -1025,15 +1155,31 @@ class _UserAdminCard extends StatelessWidget {
       ),
     );
     if (confirmed == true) {
-      // NOTE: On supprime le document Firestore.
-      // Le compte Firebase Auth reste (limitation sans Cloud Functions).
-      // → L'utilisateur ne peut plus se connecter car doc.exists == false
-      //   et l'email est bloqué à la réinscription côté auth_service.
+      final email = (data['email'] ?? '').toString().toLowerCase();
+      final prenom = data['prenom'] ?? '';
+      final nom = data['nom'] ?? '';
+
+      // 1. Enregistrer dans deleted_accounts pour bloquer réinscription
+      //    et permettre à l'admin de libérer l'email si besoin
+      if (email.isNotEmpty) {
+        await FirebaseFirestore.instance
+            .collection('deleted_accounts')
+            .doc(uid)
+            .set({
+          'uid': uid,
+          'email': email,
+          'prenom': prenom,
+          'nom': nom,
+          'deletedAt': FieldValue.serverTimestamp(),
+        });
+      }
+
+      // 2. Supprimer le document Firestore utilisateur
       await FirebaseFirestore.instance.collection('users').doc(uid).delete();
 
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('✅ Utilisateur supprimé avec succès'),
+          content: Text("✅ Compte supprimé. Email visible dans l'onglet \"🗑️\""),
           backgroundColor: Colors.green,
           behavior: SnackBarBehavior.floating,
         ));
@@ -1286,5 +1432,224 @@ class _ConfirmNounouButton extends StatelessWidget {
         ],
       ]),
     ]);
+  }
+}
+
+// ════════════════════════════════════════════════
+// ONGLET 4 — COMPTES SUPPRIMÉS
+// L'admin peut voir les emails supprimés et les libérer
+// pour permettre une nouvelle inscription
+// ════════════════════════════════════════════════
+class _DeletedAccountsTab extends StatelessWidget {
+  const _DeletedAccountsTab();
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<QuerySnapshot>(
+      stream: FirebaseFirestore.instance
+          .collection('deleted_accounts')
+          .orderBy('deletedAt', descending: true)
+          .snapshots(),
+      builder: (_, snap) {
+        if (!snap.hasData) {
+          return const Center(
+              child: CircularProgressIndicator(color: AppColors.primaryPink));
+        }
+        final docs = snap.data!.docs;
+
+        if (docs.isEmpty) {
+          return Center(
+            child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+              Container(
+                width: 80, height: 80,
+                decoration: BoxDecoration(
+                    color: Colors.green.withOpacity(0.15), shape: BoxShape.circle),
+                child: const Icon(Icons.check_circle_rounded,
+                    color: Colors.green, size: 40),
+              ),
+              const SizedBox(height: 16),
+              const Text('Aucun compte supprimé',
+                  style: TextStyle(
+                      fontSize: 18, fontWeight: FontWeight.w800, color: Colors.white)),
+              const SizedBox(height: 8),
+              const Text('Tous les emails sont libres',
+                  style: TextStyle(fontSize: 13, color: Colors.white54)),
+            ]),
+          );
+        }
+
+        return ListView(
+          padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
+          children: [
+            // Bannière info
+            Container(
+              padding: const EdgeInsets.all(14),
+              margin: const EdgeInsets.only(bottom: 16),
+              decoration: BoxDecoration(
+                color: Colors.orange.withOpacity(0.08),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: Colors.orange.withOpacity(0.3)),
+              ),
+              child: const Row(children: [
+                Icon(Icons.info_outline_rounded, color: Colors.orange, size: 18),
+                SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    'Ces comptes ont été supprimés. Appuyez sur "Libérer" '
+                    'pour permettre la réinscription avec le même email.',
+                    style: TextStyle(
+                        fontSize: 12, color: Colors.white60, height: 1.4),
+                  ),
+                ),
+              ]),
+            ),
+            ...docs.map((doc) {
+              final d = doc.data() as Map<String, dynamic>;
+              return _DeletedAccountCard(docId: doc.id, data: d);
+            }),
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _DeletedAccountCard extends StatefulWidget {
+  final String docId;
+  final Map<String, dynamic> data;
+  const _DeletedAccountCard({required this.docId, required this.data});
+  @override
+  State<_DeletedAccountCard> createState() => _DeletedAccountCardState();
+}
+
+class _DeletedAccountCardState extends State<_DeletedAccountCard> {
+  bool _loading = false;
+
+  Future<void> _libererEmail() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        backgroundColor: const Color(0xFF1A1A2E),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text('Libérer cet email ?',
+            style: TextStyle(
+                color: Colors.white, fontWeight: FontWeight.w800)),
+        content: Text(
+          "L'email \"${widget.data['email']}\" sera libéré.\n"
+          "${widget.data['prenom']} ${widget.data['nom']} pourra créer un nouveau compte.",
+          style: const TextStyle(color: Colors.white70, height: 1.5),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Annuler',
+                style: TextStyle(color: Colors.white54)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('✅ Libérer',
+                style: TextStyle(
+                    color: Colors.green, fontWeight: FontWeight.w800)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    setState(() => _loading = true);
+    await FirebaseFirestore.instance
+        .collection('deleted_accounts')
+        .doc(widget.docId)
+        .delete();
+
+    if (mounted) {
+      setState(() => _loading = false);
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('✅ Email "${widget.data['email']}" libéré !'),
+        backgroundColor: Colors.green,
+        behavior: SnackBarBehavior.floating,
+      ));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final email = widget.data['email'] ?? '';
+    final prenom = widget.data['prenom'] ?? '';
+    final nom = widget.data['nom'] ?? '';
+    final ts = widget.data['deletedAt'];
+    String dateStr = '';
+    if (ts != null) {
+      try {
+        final dt = (ts as dynamic).toDate() as DateTime;
+        dateStr = '${dt.day.toString().padLeft(2, '0')}/'
+            '${dt.month.toString().padLeft(2, '0')}/${dt.year}';
+      } catch (_) {}
+    }
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.05),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.red.withOpacity(0.2)),
+      ),
+      child: Row(children: [
+        Container(
+          width: 46, height: 46,
+          decoration: BoxDecoration(
+              color: Colors.red.withOpacity(0.12), shape: BoxShape.circle),
+          child: const Center(
+              child: Icon(Icons.person_off_rounded, color: Colors.red, size: 22)),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text('$prenom $nom',
+                style: const TextStyle(
+                    fontSize: 14, fontWeight: FontWeight.w800, color: Colors.white)),
+            const SizedBox(height: 3),
+            Text(email,
+                style: const TextStyle(fontSize: 12, color: Colors.white54),
+                maxLines: 1, overflow: TextOverflow.ellipsis),
+            if (dateStr.isNotEmpty) ...[
+              const SizedBox(height: 3),
+              Text('Supprimé le $dateStr',
+                  style: const TextStyle(fontSize: 11, color: Colors.white30)),
+            ],
+          ]),
+        ),
+        const SizedBox(width: 10),
+        _loading
+            ? const SizedBox(
+                width: 28, height: 28,
+                child: CircularProgressIndicator(
+                    strokeWidth: 2, color: Colors.green))
+            : GestureDetector(
+                onTap: _libererEmail,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 14, vertical: 9),
+                  decoration: BoxDecoration(
+                    color: Colors.green.withOpacity(0.12),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: Colors.green.withOpacity(0.4)),
+                  ),
+                  child: const Row(mainAxisSize: MainAxisSize.min, children: [
+                    Icon(Icons.lock_open_rounded,
+                        color: Colors.green, size: 14),
+                    SizedBox(width: 6),
+                    Text('Libérer',
+                        style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.green,
+                            fontWeight: FontWeight.w800)),
+                  ]),
+                ),
+              ),
+      ]),
+    );
   }
 }
