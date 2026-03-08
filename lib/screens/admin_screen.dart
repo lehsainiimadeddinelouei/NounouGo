@@ -113,54 +113,57 @@ class _TabBtn extends StatelessWidget {
 }
 
 // ── Notif badge documents en attente ──
-class _NotifBadge extends StatelessWidget {
+class _NotifBadge extends StatefulWidget {
+  @override
+  State<_NotifBadge> createState() => _NotifBadgeState();
+}
+class _NotifBadgeState extends State<_NotifBadge> {
+  int _count = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadCount();
+  }
+
+  Future<void> _loadCount() async {
+    try {
+      final snap = await FirebaseFirestore.instance
+          .collection('users').where('role', isEqualTo: 'Babysitter').get();
+      int count = 0;
+      for (final doc in snap.docs) {
+        final subSnap = await FirebaseFirestore.instance
+            .collection('users').doc(doc.id).collection('documents').get();
+        if (subSnap.docs.any((sd) => (sd.data()['statut'] as String? ?? 'en_attente') == 'en_attente')) {
+          count++;
+        }
+      }
+      if (mounted) setState(() => _count = count);
+    } catch (_) {}
+  }
+
   @override
   Widget build(BuildContext context) {
-    return StreamBuilder<QuerySnapshot>(
-      stream: FirebaseFirestore.instance.collection('users')
-          .where('role', isEqualTo: 'Babysitter').snapshots(),
-      builder: (_, snap) {
-        int count = 0;
-        final docs = snap.data?.docs ?? [];
-        for (final doc in docs) {
-          final d = doc.data() as Map<String, dynamic>;
-          if ((d['diplomePdfStatut'] == 'en_attente' || d['diplomePdfStatut'] == null) && (d['diplomePdfName'] as String? ?? '').isNotEmpty ||
-              (d['cvStatut'] == 'en_attente' || d['cvStatut'] == null) && (d['cvName'] as String? ?? '').isNotEmpty ||
-              (d['cniStatut'] == 'en_attente' || d['cniStatut'] == null) && (d['cniName'] as String? ?? '').isNotEmpty) count++;
-        }
-        return GestureDetector(
-          onTap: () => _showNotifSheet(context, docs),
-          child: Stack(children: [
-            Container(width: 42, height: 42,
-                decoration: BoxDecoration(color: Colors.white.withOpacity(0.1), borderRadius: BorderRadius.circular(12)),
-                child: const Icon(Icons.notifications_rounded, color: Colors.white, size: 20)),
-            if (count > 0) Positioned(top: 4, right: 4,
-                child: Container(width: 16, height: 16,
-                    decoration: const BoxDecoration(color: Colors.orange, shape: BoxShape.circle),
-                    child: Center(child: Text('$count',
-                        style: const TextStyle(fontSize: 9, color: Colors.white, fontWeight: FontWeight.w800))))),
-          ]),
-        );
-      },
+    return GestureDetector(
+      onTap: () => _showNotifSheet(context),
+      child: Stack(children: [
+        Container(width: 42, height: 42,
+            decoration: BoxDecoration(color: Colors.white.withOpacity(0.1), borderRadius: BorderRadius.circular(12)),
+            child: const Icon(Icons.notifications_rounded, color: Colors.white, size: 20)),
+        if (_count > 0) Positioned(top: 4, right: 4,
+            child: Container(width: 16, height: 16,
+                decoration: const BoxDecoration(color: Colors.orange, shape: BoxShape.circle),
+                child: Center(child: Text('$_count',
+                    style: const TextStyle(fontSize: 9, color: Colors.white, fontWeight: FontWeight.w800))))),
+      ]),
     );
   }
 
-  void _showNotifSheet(BuildContext context, List<QueryDocumentSnapshot> docs) {
-    // Construire la liste des notifications (docs en attente)
+  void _showNotifSheet(BuildContext context) {
     final pending = <Map<String, dynamic>>[];
-    for (final doc in docs) {
-      final d = doc.data() as Map<String, dynamic>;
-      final prenom = d['prenom'] ?? '';
-      final nom = d['nom'] ?? '';
-      if (d['diplomePdfStatut'] == 'en_attente') {
-        pending.add({'nom': '$prenom $nom', 'type': 'Diplome', 'icon': Icons.school_rounded, 'color': AppColors.primaryPink});
-      }
-      if (d['cvStatut'] == 'en_attente') {
-        pending.add({'nom': '$prenom $nom', 'type': 'CV', 'icon': Icons.description_rounded, 'color': AppColors.buttonBlue});
-      }
-      if (d['cniStatut'] == 'en_attente') {
-        pending.add({'nom': '$prenom $nom', "type": "Carte d'identite", 'icon': Icons.badge_rounded, 'color': Colors.teal});
-      }
+    // Afficher le nombre de nounous en attente
+    for (int i = 0; i < _count; i++) {
+      pending.add({'nom': 'Nounou #${i+1}', 'type': 'Documents en attente', 'icon': Icons.folder_rounded, 'color': AppColors.primaryPink});
     }
 
     showModalBottomSheet(
@@ -429,58 +432,103 @@ class _UserMiniCard extends StatelessWidget {
 }
 
 // ════════════════════════════════════════════════
-// ONGLET 2 — DOCUMENTS (avec IA)
+// ONGLET 2 — DOCUMENTS
 // ════════════════════════════════════════════════
-class _DocumentsTab extends StatelessWidget {
+class _DocumentsTab extends StatefulWidget {
   const _DocumentsTab();
   @override
-  Widget build(BuildContext context) {
-    return StreamBuilder<QuerySnapshot>(
-      stream: FirebaseFirestore.instance.collection('users')
-          .where('role', isEqualTo: 'Babysitter').snapshots(),
-      builder: (_, snap) {
-        if (!snap.hasData) return const Center(child: CircularProgressIndicator(color: AppColors.primaryPink));
+  State<_DocumentsTab> createState() => _DocumentsTabState();
+}
 
-        // Filtrer nounous avec au moins un doc en attente
-        // (inclut aussi anciennes inscriptions sans champ statut)
-        final docsEnAttente = snap.data!.docs.where((doc) {
-          final d = doc.data() as Map<String, dynamic>;
-          final hasDoc = (d['diplomePdfName'] as String? ?? '').isNotEmpty ||
-              (d['cvName'] as String? ?? '').isNotEmpty ||
-              (d['cniName'] as String? ?? '').isNotEmpty;
-          if (!hasDoc) return false;
-          final diplomeStatut = d['diplomePdfStatut'] as String?;
-          final cvStatut = d['cvStatut'] as String?;
-          final cniStatut = d['cniStatut'] as String?;
-          return diplomeStatut == 'en_attente' || diplomeStatut == null ||
-              cvStatut == 'en_attente' || cvStatut == null ||
-              cniStatut == 'en_attente' || cniStatut == null;
-        }).toList();
+class _DocumentsTabState extends State<_DocumentsTab> {
+  List<Map<String, dynamic>> _nounousAvecDocs = [];
+  bool _loading = true;
 
-        if (docsEnAttente.isEmpty) {
-          return Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-            Container(width: 80, height: 80,
-                decoration: BoxDecoration(color: Colors.green.withOpacity(0.15), shape: BoxShape.circle),
-                child: const Icon(Icons.check_circle_rounded, color: Colors.green, size: 40)),
-            const SizedBox(height: 16),
-            const Text('Tout est vérifié !',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: Colors.white)),
-            const SizedBox(height: 8),
-            const Text('Aucun document en attente de vérification',
-                style: TextStyle(fontSize: 13, color: Colors.white54)),
-          ]));
+  @override
+  void initState() {
+    super.initState();
+    _loadNounousAvecDocs();
+  }
+
+  Future<void> _loadNounousAvecDocs() async {
+    setState(() => _loading = true);
+    try {
+      // Charger toutes les nounous
+      final snap = await FirebaseFirestore.instance
+          .collection('users')
+          .where('role', isEqualTo: 'Babysitter')
+          .get();
+
+      final result = <Map<String, dynamic>>[];
+
+      for (final doc in snap.docs) {
+        final d = doc.data();
+        final uid = doc.id;
+
+        // Vérifier la sous-collection documents
+        final subSnap = await FirebaseFirestore.instance
+            .collection('users').doc(uid).collection('documents').get();
+
+        if (subSnap.docs.isEmpty) continue;
+
+        // Vérifier si au moins un doc est en attente
+        final hasEnAttente = subSnap.docs.any((sd) {
+          final statut = sd.data()['statut'] as String? ?? 'en_attente';
+          return statut == 'en_attente';
+        });
+
+        if (hasEnAttente) {
+          result.add({...d, 'uid': uid});
         }
+      }
 
-        return ListView.builder(
-          padding: const EdgeInsets.symmetric(horizontal: 20),
-          itemCount: docsEnAttente.length,
-          itemBuilder: (_, i) {
-            final doc = docsEnAttente[i];
-            final d = doc.data() as Map<String, dynamic>;
-            return _NounouDocCard(uid: doc.id, data: d);
-          },
-        );
-      },
+      if (mounted) setState(() { _nounousAvecDocs = result; _loading = false; });
+    } catch (e) {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_loading) return const Center(child: CircularProgressIndicator(color: AppColors.primaryPink));
+
+    if (_nounousAvecDocs.isEmpty) {
+      return Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+        Container(width: 80, height: 80,
+            decoration: BoxDecoration(color: Colors.green.withOpacity(0.15), shape: BoxShape.circle),
+            child: const Icon(Icons.check_circle_rounded, color: Colors.green, size: 40)),
+        const SizedBox(height: 16),
+        const Text('Tout est vérifié !',
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: Colors.white)),
+        const SizedBox(height: 8),
+        const Text('Aucun document en attente de vérification',
+            style: TextStyle(fontSize: 13, color: Colors.white54)),
+        const SizedBox(height: 24),
+        GestureDetector(
+          onTap: _loadNounousAvecDocs,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+            decoration: BoxDecoration(
+              color: AppColors.primaryPink.withOpacity(0.15),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: AppColors.primaryPink.withOpacity(0.4)),
+            ),
+            child: const Text('🔄 Actualiser', style: TextStyle(color: AppColors.primaryPink, fontWeight: FontWeight.w700)),
+          ),
+        ),
+      ]));
+    }
+
+    return RefreshIndicator(
+      onRefresh: _loadNounousAvecDocs,
+      child: ListView.builder(
+        padding: const EdgeInsets.symmetric(horizontal: 20),
+        itemCount: _nounousAvecDocs.length,
+        itemBuilder: (_, i) {
+          final d = _nounousAvecDocs[i];
+          return _NounouDocCard(uid: d['uid'] as String, data: d);
+        },
+      ),
     );
   }
 }
@@ -571,59 +619,30 @@ class _NounouDocCardState extends State<_NounouDocCard> {
   }
 
   Future<void> _loadDocs() async {
-    final d = widget.data;
-    final uid = d['uid'] as String? ?? '';
+    final uid = (widget.data['uid'] as String?) ?? '';
     final loaded = <Map<String, dynamic>>[];
-
-    // Construire depuis champs principaux (noms + statuts)
-    final docsInfo = <Map<String, dynamic>>[];
-    if ((d['diplomePdfName'] as String? ?? '').isNotEmpty || (d['diplomePdfBase64'] as String? ?? '').isNotEmpty) {
-      docsInfo.add({'type': 'diplome', 'label': 'Diplôme', 'icon': Icons.school_rounded,
-        'color': AppColors.primaryPink, 'base64': d['diplomePdfBase64'] ?? '',
-        'name': d['diplomePdfName'] ?? 'diplome.pdf', 'statut': d['diplomePdfStatut'] ?? 'en_attente'});
-    }
-    if ((d['cvName'] as String? ?? '').isNotEmpty || (d['cvBase64'] as String? ?? '').isNotEmpty) {
-      docsInfo.add({'type': 'cv', 'label': 'CV', 'icon': Icons.description_rounded,
-        'color': AppColors.buttonBlue, 'base64': d['cvBase64'] ?? '',
-        'name': d['cvName'] ?? 'cv.pdf', 'statut': d['cvStatut'] ?? 'en_attente'});
-    }
-    if ((d['cniName'] as String? ?? '').isNotEmpty || (d['cniBase64'] as String? ?? '').isNotEmpty) {
-      docsInfo.add({'type': 'cni', 'label': "Carte d'identité", 'icon': Icons.badge_rounded,
-        'color': Colors.teal, 'base64': d['cniBase64'] ?? '',
-        'name': d['cniName'] ?? 'cni.pdf', 'statut': d['cniStatut'] ?? 'en_attente'});
-    }
 
     if (uid.isNotEmpty) {
       try {
+        // SOURCE UNIQUE : sous-collection documents
         final subSnap = await FirebaseFirestore.instance
             .collection('users').doc(uid).collection('documents').get();
         for (final subDoc in subSnap.docs) {
           final sd = subDoc.data();
           final type = sd['type'] as String? ?? subDoc.id;
-          final info = docsInfo.firstWhere((i) => i['type'] == type, orElse: () => {});
-          if (info.isEmpty) {
-            loaded.add({'type': type,
-              'label': type == 'diplome' ? 'Diplôme' : type == 'cv' ? 'CV' : "Carte d'identité",
-              'icon': type == 'diplome' ? Icons.school_rounded : type == 'cv' ? Icons.description_rounded : Icons.badge_rounded,
-              'color': type == 'diplome' ? AppColors.primaryPink : type == 'cv' ? AppColors.buttonBlue : Colors.teal,
-              'base64': sd['base64'] ?? '', 'name': sd['name'] ?? '$type.pdf',
-              'statut': sd['statut'] ?? 'en_attente'});
-          } else {
-            loaded.add({...info, 'base64': sd['base64'] ?? info['base64'] ?? ''});
-          }
+          loaded.add({
+            'type': type,
+            'label': type == 'diplome' ? 'Diplôme' : type == 'cv' ? 'CV' : "Carte d'identité",
+            'icon': type == 'diplome' ? Icons.school_rounded : type == 'cv' ? Icons.description_rounded : Icons.badge_rounded,
+            'color': type == 'diplome' ? AppColors.primaryPink : type == 'cv' ? AppColors.buttonBlue : Colors.teal,
+            'base64': sd['base64'] ?? '',
+            'name': sd['name'] ?? '$type.pdf',
+            'statut': sd['statut'] ?? 'en_attente',
+          });
         }
-        // Ajouter les docs anciens comptes (base64 dans doc principal)
-        for (final info in docsInfo) {
-          if (!loaded.any((x) => x['type'] == info['type'])) {
-            if ((info['base64'] as String).isNotEmpty) loaded.add(info);
-          }
-        }
-      } catch (_) {
-        // Fallback: champs principaux
-        loaded.addAll(docsInfo.where((i) => (i['base64'] as String).isNotEmpty));
+      } catch (e) {
+        debugPrint('_loadDocs error: $e');
       }
-    } else {
-      loaded.addAll(docsInfo.where((i) => (i['base64'] as String).isNotEmpty));
     }
 
     if (mounted) setState(() { _docs = loaded; _docsLoaded = true; });

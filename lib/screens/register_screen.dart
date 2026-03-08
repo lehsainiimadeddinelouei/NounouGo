@@ -86,6 +86,11 @@ class _RegisterScreenState extends State<RegisterScreen>
         bytes = await File(f.path!).readAsBytes();
       }
       if (bytes == null) { _snack('Impossible de lire le fichier.'); return; }
+      // Vérifier taille: Firestore limite 1MB/doc, base64 augmente de 33%
+      if (bytes.lengthInBytes > 900 * 1024) {
+        _snack('❌ Fichier trop volumineux (max 900 KB). Compressez votre document.');
+        return;
+      }
       final b64 = base64Encode(bytes);
       setState(() {
         if (type == 'diplome') { _diplomeB64 = b64; _diplomeNom = f.name; }
@@ -135,50 +140,77 @@ class _RegisterScreenState extends State<RegisterScreen>
       return;
     }
 
-    // ── Envoyer les documents dans Firestore → sous-collection séparée (évite limite 1MB) ──
+    // ── Envoyer les documents dans Firestore → sous-collection séparée ──
     if (widget.role == 'Babysitter') {
       try {
+        // Attendre que le token Firebase Auth soit propagé
+        await Future.delayed(const Duration(seconds: 2));
+        await FirebaseAuth.instance.currentUser?.reload();
+        await FirebaseAuth.instance.currentUser?.getIdToken(true);
+
         final uid = FirebaseAuth.instance.currentUser?.uid;
-        if (uid != null) {
-          final docsRef = FirebaseFirestore.instance
-              .collection('users').doc(uid).collection('documents');
+        if (uid == null) throw Exception('Utilisateur non connecté');
 
-          // Sauvegarder chaque doc séparément (chacun peut faire jusqu'à 1MB)
+        final docsRef = FirebaseFirestore.instance
+            .collection('users').doc(uid).collection('documents');
+
+        // Diplôme
+        try {
           await docsRef.doc('diplome').set({
-            'base64':  _diplomeB64,
-            'name':    _diplomeNom,
-            'statut':  'en_attente',
-            'type':    'diplome',
+            'base64': _diplomeB64,
+            'name': _diplomeNom,
+            'statut': 'en_attente',
+            'type': 'diplome',
             'uploadedAt': FieldValue.serverTimestamp(),
           });
-          await docsRef.doc('cv').set({
-            'base64':  _cvB64,
-            'name':    _cvNom,
-            'statut':  'en_attente',
-            'type':    'cv',
-            'uploadedAt': FieldValue.serverTimestamp(),
-          });
-          await docsRef.doc('cni').set({
-            'base64':  _cniB64,
-            'name':    _cniNom,
-            'statut':  'en_attente',
-            'type':    'cni',
-            'uploadedAt': FieldValue.serverTimestamp(),
-          });
-
-          // Mettre à jour le doc principal avec les statuts (sans les base64)
-          await FirebaseFirestore.instance.collection('users').doc(uid).update({
-            'diplomePdfName':   _diplomeNom,
-            'diplomePdfStatut': 'en_attente',
-            'cvName':           _cvNom,
-            'cvStatut':         'en_attente',
-            'cniName':          _cniNom,
-            'cniStatut':        'en_attente',
-            'hasDocuments':     true,
-          });
+          _snack('✅ Diplôme envoyé (${(_diplomeB64!.length / 1024).toStringAsFixed(0)} KB)');
+        } catch (e) {
+          throw Exception('Échec diplôme (${(_diplomeB64!.length / 1024).toStringAsFixed(0)} KB): $e');
         }
+
+        // CV
+        try {
+          await docsRef.doc('cv').set({
+            'base64': _cvB64,
+            'name': _cvNom,
+            'statut': 'en_attente',
+            'type': 'cv',
+            'uploadedAt': FieldValue.serverTimestamp(),
+          });
+          _snack('✅ CV envoyé (${(_cvB64!.length / 1024).toStringAsFixed(0)} KB)');
+        } catch (e) {
+          throw Exception('Échec CV (${(_cvB64!.length / 1024).toStringAsFixed(0)} KB): $e');
+        }
+
+        // CNI
+        try {
+          await docsRef.doc('cni').set({
+            'base64': _cniB64,
+            'name': _cniNom,
+            'statut': 'en_attente',
+            'type': 'cni',
+            'uploadedAt': FieldValue.serverTimestamp(),
+          });
+          _snack('✅ CNI envoyé (${(_cniB64!.length / 1024).toStringAsFixed(0)} KB)');
+        } catch (e) {
+          throw Exception('Échec CNI (${(_cniB64!.length / 1024).toStringAsFixed(0)} KB): $e');
+        }
+
+        // Mettre à jour le doc principal
+        await FirebaseFirestore.instance.collection('users').doc(uid).update({
+          'diplomePdfName': _diplomeNom,
+          'diplomePdfStatut': 'en_attente',
+          'cvName': _cvNom,
+          'cvStatut': 'en_attente',
+          'cniName': _cniNom,
+          'cniStatut': 'en_attente',
+          'hasDocuments': true,
+        });
+
       } catch (e) {
-        // Ignorer les erreurs silencieusement
+        setState(() => _isLoading = false);
+        _snack('Erreur upload documents: $e');
+        return;
       }
     }
 
