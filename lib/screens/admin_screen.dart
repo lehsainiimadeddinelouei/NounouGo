@@ -1,5 +1,5 @@
-import 'dart:io';
 import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/services.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -124,9 +124,9 @@ class _NotifBadge extends StatelessWidget {
         final docs = snap.data?.docs ?? [];
         for (final doc in docs) {
           final d = doc.data() as Map<String, dynamic>;
-          if (d['diplomePdfStatut'] == 'en_attente' ||
-              d['cvStatut'] == 'en_attente' ||
-              d['cniStatut'] == 'en_attente') count++;
+          if ((d['diplomePdfStatut'] == 'en_attente' || d['diplomePdfStatut'] == null) && (d['diplomePdfName'] as String? ?? '').isNotEmpty ||
+              (d['cvStatut'] == 'en_attente' || d['cvStatut'] == null) && (d['cvName'] as String? ?? '').isNotEmpty ||
+              (d['cniStatut'] == 'en_attente' || d['cniStatut'] == null) && (d['cniName'] as String? ?? '').isNotEmpty) count++;
         }
         return GestureDetector(
           onTap: () => _showNotifSheet(context, docs),
@@ -442,11 +442,19 @@ class _DocumentsTab extends StatelessWidget {
         if (!snap.hasData) return const Center(child: CircularProgressIndicator(color: AppColors.primaryPink));
 
         // Filtrer nounous avec au moins un doc en attente
+        // (inclut aussi anciennes inscriptions sans champ statut)
         final docsEnAttente = snap.data!.docs.where((doc) {
           final d = doc.data() as Map<String, dynamic>;
-          return d['diplomePdfStatut'] == 'en_attente' ||
-              d['cvStatut'] == 'en_attente' ||
-              d['cniStatut'] == 'en_attente';
+          final hasDoc = (d['diplomePdfName'] as String? ?? '').isNotEmpty ||
+              (d['cvName'] as String? ?? '').isNotEmpty ||
+              (d['cniName'] as String? ?? '').isNotEmpty;
+          if (!hasDoc) return false;
+          final diplomeStatut = d['diplomePdfStatut'] as String?;
+          final cvStatut = d['cvStatut'] as String?;
+          final cniStatut = d['cniStatut'] as String?;
+          return diplomeStatut == 'en_attente' || diplomeStatut == null ||
+              cvStatut == 'en_attente' || cvStatut == null ||
+              cniStatut == 'en_attente' || cniStatut == null;
         }).toList();
 
         if (docsEnAttente.isEmpty) {
@@ -486,114 +494,6 @@ class _NounouDocCard extends StatefulWidget {
 
 class _NounouDocCardState extends State<_NounouDocCard> {
   bool _expanded = false;
-  String _aiAnalysis = '';
-  bool _aiLoading = false;
-
-  Future<void> _analyzeWithAI(String docType, String base64Data, String fileName) async {
-    setState(() { _aiLoading = true; _aiAnalysis = ''; });
-    try {
-      final http = await _callClaudeAPI(docType, base64Data, fileName, widget.data);
-      setState(() => _aiAnalysis = http);
-    } catch (e) {
-      setState(() => _aiAnalysis = 'Erreur analyse: $e');
-    }
-    setState(() => _aiLoading = false);
-  }
-
-  Future<String> _callClaudeAPI(String docType, String base64Data, String fileName,
-      Map<String, dynamic> userData) async {
-    final prenom = userData['prenom'] ?? '';
-    final nom = userData['nom'] ?? '';
-    final isImage = fileName.toLowerCase().endsWith('.jpg') ||
-        fileName.toLowerCase().endsWith('.jpeg') ||
-        fileName.toLowerCase().endsWith('.png');
-    final mimeType = isImage ? 'image/jpeg' : 'application/pdf';
-    final prompt = _buildPrompt(docType, prenom, nom);
-
-    try {
-      final uri = Uri.parse('https://api.anthropic.com/v1/messages');
-      final bodyMap = <String, dynamic>{
-        'model': 'claude-sonnet-4-6',
-        'max_tokens': 500,
-        'messages': [
-          {
-            'role': 'user',
-            'content': isImage
-                ? [
-              {'type': 'image', 'source': {'type': 'base64', 'media_type': mimeType, 'data': base64Data}},
-              {'type': 'text', 'text': prompt},
-            ]
-                : [
-              {'type': 'text', 'text': prompt},
-            ],
-          }
-        ],
-      };
-      return await _postHttp(uri, bodyMap);
-    } catch (e) {
-      return '{"valide": false, "confiance": 0, "recommandation": "Vérification manuelle", "motif": "Erreur: $e"}';
-    }
-  }
-
-  String _buildPrompt(String docType, String prenom, String nom) {
-    switch (docType) {
-      case 'diplome':
-        return '''Analyse ce document comme assistant de vérification pour NounouGo.
-Profil: $prenom $nom (babysitter)
-Type attendu: Diplôme (CAP Petite Enfance, Licence, etc.)
-
-Vérifie:
-1. Est-ce bien un diplôme/certificat officiel ?
-2. Le nom sur le document correspond-il à $prenom $nom ?
-3. Le diplôme est-il pertinent pour la garde d'enfants ?
-4. Y a-t-il des signes de falsification ?
-
-Réponds en JSON: {"valide": true/false, "confiance": 0-100, "type_doc": "...", "nom_detecte": "...", "recommandation": "Valider/Refuser/Vérification manuelle", "motif": "..."}''';
-      case 'cv':
-        return '''Analyse ce CV pour NounouGo.
-Profil: $prenom $nom (babysitter)
-
-Vérifie:
-1. Est-ce bien un CV professionnel ?
-2. Y a-t-il une expérience en garde d'enfants ?
-3. Le document semble-t-il authentique ?
-
-Réponds en JSON: {"valide": true/false, "confiance": 0-100, "experience_enfants": true/false, "recommandation": "Valider/Refuser/Vérification manuelle", "motif": "..."}''';
-      default: // cni
-        return '''Analyse cette pièce d'identité pour NounouGo.
-Profil attendu: $prenom $nom
-
-Vérifie:
-1. Est-ce bien une pièce d'identité officielle (CNI, passeport) ?
-2. Le nom correspond-il à $prenom $nom ?
-3. Le document est-il lisible et non expiré (si visible) ?
-4. Y a-t-il des signes de falsification ?
-
-Réponds en JSON: {"valide": true/false, "confiance": 0-100, "type_doc": "CNI/Passeport/Autre", "nom_detecte": "...", "recommandation": "Valider/Refuser/Vérification manuelle", "motif": "..."}''';
-    }
-  }
-
-  Future<String> _postHttp(Uri uri, Map<String, dynamic> body) async {
-    final client = HttpClient();
-    try {
-      final request = await client.postUrl(uri);
-      request.headers.set('content-type', 'application/json');
-      request.headers.set('x-api-key', '');
-      request.headers.set('anthropic-version', '2023-06-01');
-      request.write(jsonEncode(body));
-      final response = await request.close();
-      final respBody = await response.transform(utf8.decoder).join();
-      final decoded = jsonDecode(respBody) as Map<String, dynamic>;
-      final responseContent = decoded['content'] as List?;
-      if (responseContent != null && responseContent.isNotEmpty) {
-        return (responseContent[0] as Map)['text'] as String? ?? '';
-      }
-      return '{"recommandation": "Vérification manuelle", "motif": "Réponse inattendue"}';
-    } finally {
-      client.close();
-    }
-  }
-
   Future<void> _updateDocStatut(String docType, String statut) async {
     final field = docType == 'diplome' ? 'diplomePdfStatut'
         : docType == 'cv' ? 'cvStatut' : 'cniStatut';
@@ -617,6 +517,40 @@ Réponds en JSON: {"valide": true/false, "confiance": 0-100, "type_doc": "CNI/Pa
       'lu': false,
       'createdAt': FieldValue.serverTimestamp(),
     });
+
+    // Si validé → vérifier si les 3 docs sont validés pour activer le compte
+    if (statut == 'validé') {
+      final userDoc = await FirebaseFirestore.instance.collection('users').doc(widget.uid).get();
+      final d = userDoc.data() as Map<String, dynamic>? ?? {};
+      final diplomeOk = (field == 'diplomePdfStatut') || d['diplomePdfStatut'] == 'validé';
+      final cvOk = (field == 'cvStatut') || d['cvStatut'] == 'validé';
+      final cniOk = (field == 'cniStatut') || d['cniStatut'] == 'validé';
+
+      if (diplomeOk && cvOk && cniOk) {
+        // Activer le compte automatiquement
+        await FirebaseFirestore.instance.collection('users').doc(widget.uid).update({
+          'documentsValides': true,
+          'compteActif': true,
+        });
+        // Notifier la nounou
+        await FirebaseFirestore.instance.collection('notifications').add({
+          'destinataireUid': widget.uid,
+          'titre': '🎉 Compte activé !',
+          'message': 'Félicitations ! Tous vos documents ont été validés. Votre compte est maintenant actif.',
+          'type': 'compte_active',
+          'lu': false,
+          'createdAt': FieldValue.serverTimestamp(),
+        });
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('🎉 Compte nounou activé automatiquement !'),
+            backgroundColor: Colors.green,
+            behavior: SnackBarBehavior.floating,
+          ));
+        }
+        return;
+      }
+    }
 
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
@@ -771,9 +705,6 @@ Réponds en JSON: {"valide": true/false, "confiance": 0-100, "type_doc": "CNI/Pa
               ...docs.map((doc) => _DocReviewCard(
                 docInfo: doc,
                 userData: d,
-                onAnalyze: () => _analyzeWithAI(doc['type'], doc['base64'] ?? '', doc['name']),
-                aiLoading: _aiLoading,
-                aiResult: _aiAnalysis,
                 onValidate: () => _updateDocStatut(doc['type'], 'validé'),
                 onRefuse: () => _updateDocStatut(doc['type'], 'refusé'),
               )).toList(),
@@ -791,28 +722,16 @@ Réponds en JSON: {"valide": true/false, "confiance": 0-100, "type_doc": "CNI/Pa
 
 class _DocReviewCard extends StatelessWidget {
   final Map<String, dynamic> docInfo, userData;
-  final VoidCallback onAnalyze, onValidate, onRefuse;
-  final bool aiLoading;
-  final String aiResult;
+  final VoidCallback onValidate, onRefuse;
 
   const _DocReviewCard({
     required this.docInfo, required this.userData,
-    required this.onAnalyze, required this.onValidate, required this.onRefuse,
-    required this.aiLoading, required this.aiResult,
+    required this.onValidate, required this.onRefuse,
   });
-
-  Map<String, dynamic>? _parseAiResult() {
-    if (aiResult.isEmpty) return null;
-    try {
-      final clean = aiResult.replaceAll('```json', '').replaceAll('```', '').trim();
-      return json.decode(clean) as Map<String, dynamic>;
-    } catch (_) { return null; }
-  }
 
   @override
   Widget build(BuildContext context) {
     final color = docInfo['color'] as Color;
-    final aiData = _parseAiResult();
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
@@ -829,9 +748,9 @@ class _DocReviewCard extends StatelessWidget {
           Text(docInfo['label'] as String,
               style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: color)),
           const Spacer(),
-          Text(docInfo['name'] as String,
+          Flexible(child: Text(docInfo['name'] as String,
               style: const TextStyle(fontSize: 11, color: Colors.white38),
-              maxLines: 1, overflow: TextOverflow.ellipsis),
+              maxLines: 1, overflow: TextOverflow.ellipsis)),
         ]),
 
         const SizedBox(height: 10),
@@ -875,73 +794,6 @@ class _DocReviewCard extends StatelessWidget {
           ),
         ),
 
-        // Bouton analyser IA
-        GestureDetector(
-          onTap: aiLoading ? null : onAnalyze,
-          child: Container(
-            width: double.infinity,
-            padding: const EdgeInsets.symmetric(vertical: 12),
-            decoration: BoxDecoration(
-              gradient: LinearGradient(colors: [
-                Colors.purple.withOpacity(0.3), Colors.blue.withOpacity(0.3)]),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: Colors.purple.withOpacity(0.4)),
-            ),
-            child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-              aiLoading
-                  ? const SizedBox(width: 16, height: 16,
-                  child: CircularProgressIndicator(strokeWidth: 2, color: Colors.purple))
-                  : const Icon(Icons.auto_awesome_rounded, color: Colors.purple, size: 16),
-              const SizedBox(width: 8),
-              Text(aiLoading ? "Analyse en cours..." : "🤖 Analyser avec l'IA",
-                  style: const TextStyle(fontSize: 13, color: Colors.white, fontWeight: FontWeight.w700)),
-            ]),
-          ),
-        ),
-
-        // Résultat IA
-        if (aiData != null) ...[
-          const SizedBox(height: 10),
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: Colors.black.withOpacity(0.3),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: Colors.purple.withOpacity(0.3)),
-            ),
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Row(children: [
-                const Icon(Icons.psychology_rounded, color: Colors.purple, size: 16),
-                const SizedBox(width: 6),
-                const Text('Analyse IA', style: TextStyle(fontSize: 12, color: Colors.purple, fontWeight: FontWeight.w800)),
-                const Spacer(),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                  decoration: BoxDecoration(
-                    color: _getRecommColor(aiData['recommandation'] ?? '').withOpacity(0.2),
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: Text(aiData['recommandation'] ?? '',
-                      style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800,
-                          color: _getRecommColor(aiData['recommandation'] ?? ''))),
-                ),
-              ]),
-              const SizedBox(height: 8),
-              if (aiData['confiance'] != null)
-                _AiBar(label: 'Confiance', value: (aiData['confiance'] as num).toDouble()),
-              const SizedBox(height: 6),
-              if (aiData['motif'] != null)
-                Text(aiData['motif'] as String,
-                    style: const TextStyle(fontSize: 12, color: Colors.white70, height: 1.4)),
-            ]),
-          ),
-        ],
-
-        if (aiResult.isNotEmpty && aiData == null) ...[
-          const SizedBox(height: 8),
-          Text(aiResult, style: const TextStyle(fontSize: 11, color: Colors.white54)),
-        ],
-
         const SizedBox(height: 12),
 
         // Boutons Valider / Refuser
@@ -982,12 +834,6 @@ class _DocReviewCard extends StatelessWidget {
         ]),
       ]),
     );
-  }
-
-  Color _getRecommColor(String r) {
-    if (r.contains('Valider')) return Colors.green;
-    if (r.contains('Refuser')) return Colors.red;
-    return Colors.orange;
   }
 
   void _showDocViewer(BuildContext context, Map<String, dynamic> docInfo) {
@@ -1223,32 +1069,6 @@ class _PdfDownloadSectionState extends State<_PdfDownloadSection> {
   }
 }
 
-class _AiBar extends StatelessWidget {
-  final String label; final double value;
-  const _AiBar({required this.label, required this.value});
-  @override
-  Widget build(BuildContext context) => Column(children: [
-    Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-      Text(label, style: const TextStyle(fontSize: 11, color: Colors.white54)),
-      Text('${value.toInt()}%', style: const TextStyle(fontSize: 11, color: Colors.white70, fontWeight: FontWeight.w700)),
-    ]),
-    const SizedBox(height: 4),
-    ClipRRect(
-      borderRadius: BorderRadius.circular(4),
-      child: LinearProgressIndicator(
-        value: value / 100,
-        backgroundColor: Colors.white.withOpacity(0.1),
-        valueColor: AlwaysStoppedAnimation(
-            value >= 80 ? Colors.green : value >= 50 ? Colors.orange : Colors.red),
-        minHeight: 6,
-      ),
-    ),
-  ]);
-}
-
-// ════════════════════════════════════════════════
-// ONGLET 3 — UTILISATEURS
-// ════════════════════════════════════════════════
 class _UsersTab extends StatefulWidget {
   const _UsersTab();
   @override

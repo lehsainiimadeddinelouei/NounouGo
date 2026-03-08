@@ -61,7 +61,7 @@ class _SearchNounousScreenState extends State<SearchNounousScreen>
             return data;
           })
           // Exclure les nounous bloquées ou non autorisées
-          .where((n) => !(n['bloque'] ?? false) && (n['autoriseeATravail'] ?? false))
+          .where((n) => !(n['bloque'] ?? false) && ((n['compteActif'] ?? false) || (n['autoriseeATravail'] ?? false)))
           .toList();
 
       setState(() {
