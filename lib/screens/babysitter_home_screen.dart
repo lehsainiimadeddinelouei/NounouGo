@@ -275,7 +275,7 @@ class _ProfilTab extends StatelessWidget {
     final diplomes = List<String>.from(data['diplomes'] ?? []);
     final competences = List<String>.from(data['competences'] ?? []);
     final disponibilites = List<String>.from(data['disponibilites'] ?? []);
-    final autorisee = data['autoriseeATravail'] ?? false;
+    final autorisee = (data['autoriseeATravail'] ?? false) || (data['compteActif'] ?? false);
 
     return Container(
       decoration: const BoxDecoration(
