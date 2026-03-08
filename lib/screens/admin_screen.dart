@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/services.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import '../theme/app_theme.dart';
 
 // ════════════════════════════════════════════════
@@ -1410,9 +1411,15 @@ class _UserAdminCard extends StatelessWidget {
       // 3. Supprimer le document utilisateur principal
       await FirebaseFirestore.instance.collection('users').doc(uid).delete();
 
+      // 4. Supprimer le compte Firebase Auth via Cloud Function
+      try {
+        final callable = FirebaseFunctions.instance.httpsCallable('deleteUserAccount');
+        await callable.call({'uid': uid});
+      } catch (_) {}
+
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text('✅ Compte de $prenom $nom supprimé.'),
+          content: Text('✅ Compte de $prenom $nom supprimé définitivement.'),
           backgroundColor: Colors.green,
           behavior: SnackBarBehavior.floating,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),

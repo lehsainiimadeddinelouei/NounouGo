@@ -13,37 +13,73 @@ service cloud.firestore {
 
     function isOwner(uid) { return isAuth() && request.auth.uid == uid; }
 
+    // ── Utilisateurs ──
     match /users/{uid} {
       allow read: if isAuth();
       allow create: if isAuth() && request.auth.uid == uid;
       allow update: if isOwner(uid) || isAdmin();
-      allow delete: if isOwner(uid) || isAdmin(); // ← nounou peut supprimer son propre compte
+      allow delete: if isOwner(uid) || isAdmin();
 
       match /documents/{docId} {
         allow read: if isOwner(uid) || isAdmin();
         allow write: if isOwner(uid) || isAdmin();
-        allow delete: if isOwner(uid) || isAdmin(); // ← peut supprimer ses propres docs
+        allow delete: if isOwner(uid) || isAdmin();
       }
     }
 
+    // ── Comptes supprimés ── (lecture publique pour vérifier à l'inscription)
     match /deleted_accounts/{docId} {
-      allow read: if isAuth();
-      allow write: if isAuth(); // ← tout utilisateur connecté peut s'y enregistrer
+      allow read: if true;       // ← tout le monde peut lire (même non connecté)
+      allow write: if isAuth();
       allow delete: if isAdmin();
     }
 
+    // ── Demandes de RDV ──
+    match /demandes/{demandeId} {
+      allow read: if isAuth();
+      allow create: if isAuth();
+      allow update: if isAuth();
+      allow delete: if isAuth();
+    }
+
+    // ── Avis / évaluations ──
+    match /avis/{avisId} {
+      allow read: if isAuth();
+      allow create: if isAuth();
+      allow update: if isAuth();
+      allow delete: if isAdmin();
+    }
+
+    // ── Paiements ──
+    match /paiements/{paiementId} {
+      allow read: if isAuth();
+      allow create: if isAuth();
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    // ── Codes OTP ──
+    match /otp_codes/{docId} {
+      allow read: if isAuth();
+      allow write: if isAuth();
+    }
+
+    // ── Conversations ──
     match /conversations/{convId} {
       allow read, write: if isAuth() &&
         (resource == null || request.auth.uid in resource.data.participants);
+
+      match /messages/{msgId} {
+        allow read, write: if isAuth();
+      }
     }
 
-    match /conversations/{convId}/messages/{msgId} {
-      allow read, write: if isAuth();
-    }
-
-    match /notifications/{uid}/items/{notifId} {
-      allow read: if isOwner(uid);
-      allow write: if isAuth();
+    // ── Notifications ──
+    match /notifications/{notifId} {
+      allow read: if isAuth();
+      allow create: if isAuth();
+      allow update: if isAuth();
+      allow delete: if isAuth();
     }
   }
 }

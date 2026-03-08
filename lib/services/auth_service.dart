@@ -22,17 +22,17 @@ class AuthService {
     List<String> ageGroups = const [],
   }) async {
     try {
-      // 0. Vérifier si l'email est déjà utilisé dans Auth (compte supprimé par admin)
-      // On essaie de se connecter avec fetchSignInMethodsForEmail
-      final methods = await _auth.fetchSignInMethodsForEmail(email.trim());
-      if (methods.isNotEmpty) {
-        // L'email existe dans Auth → vérifier si le doc Firestore existe aussi
-        // Si doc Firestore absent = compte orphelin (supprimé par admin)
-        // Dans ce cas on informe l'utilisateur de contacter le support
-        // ou de se connecter avec son ancien compte
+      // 0. Vérifier si l'email est dans deleted_accounts (banni par l'admin)
+      final emailLower = email.trim().toLowerCase();
+      final deletedSnap = await _db
+          .collection('deleted_accounts')
+          .where('email', isEqualTo: emailLower)
+          .limit(1)
+          .get();
+      if (deletedSnap.docs.isNotEmpty) {
         return AuthResult(
           success: false,
-          message: 'Cette adresse email est déjà associée à un compte. Essayez de vous connecter ou contactez le support.',
+          message: "Ce compte a été supprimé. Contactez le support pour plus d'informations.",
         );
       }
 
