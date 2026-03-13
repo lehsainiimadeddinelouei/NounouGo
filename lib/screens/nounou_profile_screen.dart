@@ -1,438 +1,481 @@
-import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import '../theme/app_theme.dart';
-import 'booking_screen.dart';
-import 'chat_screen.dart';
-import 'historique_screen.dart';
-import 'role_selection_screen.dart';
+import 'babysitter_edit_profile_screen.dart';
 
-class NounouProfileScreen extends StatefulWidget {
-  final Map<String, dynamic> nounouData;
-  const NounouProfileScreen({super.key, required this.nounouData});
+// ─────────────────────────────────────────────────────────────
+// SCREEN — Shows the babysitter's public profile
+// ─────────────────────────────────────────────────────────────
+class NounouProfileScreen extends StatelessWidget {
+  const NounouProfileScreen({super.key});
+
+  static const _pink = Color(0xFFFF6B8A);
+
+  // ── Firebase shortcuts ─────────────────────────────────────
+  static final _uid = FirebaseAuth.instance.currentUser!.uid;
+
+  static final _profileRef = FirebaseFirestore.instance
+      .collection('babysitters')
+      .doc(_uid);
+
+  static final _reviewsRef = _profileRef
+      .collection('reviews')
+      .orderBy('createdAt', descending: true)
+      .limit(5);
+
   @override
-  State<NounouProfileScreen> createState() => _NounouProfileScreenState();
-}
+  Widget build(BuildContext context) {
+    return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+      stream: _profileRef.snapshots(),
+      builder: (context, snap) {
 
-class _NounouProfileScreenState extends State<NounouProfileScreen> {
-  String get _initiales {
-    final p = (widget.nounouData['prenom'] ?? '');
-    final n = (widget.nounouData['nom'] ?? '');
-    return '${p.isNotEmpty ? p[0].toUpperCase() : ''}${n.isNotEmpty ? n[0].toUpperCase() : ''}';
-  }
+        // Show loader while waiting for first data
+        if (snap.connectionState == ConnectionState.waiting) {
+          return const Scaffold(
+              body: Center(child: CircularProgressIndicator()));
+        }
 
-  // Vérifie si c'est la nounou elle-même qui regarde son profil
-  bool get _isOwnProfile {
-    final currentUid = FirebaseAuth.instance.currentUser?.uid;
-    return currentUid != null && currentUid == widget.nounouData['uid'];
-  }
+        // Read profile fields with safe fallbacks
+        final d           = snap.data?.data() ?? {};
+        final fullName    = d['fullName']      ?? FirebaseAuth.instance.currentUser?.displayName ?? 'Nounou';
+        final photoUrl    = d['photoUrl']      ?? FirebaseAuth.instance.currentUser?.photoURL    ?? '';
+        final description = d['description']  ?? 'Aucune description.';
+        final experience  = d['experience']   ?? '-';
+        final rating      = (d['averageRating'] ?? 0.0).toDouble();
+        final reviewCount = d['reviewCount']  ?? 0;
+        final location    = d['location']     ?? '';
+        final skills      = List<String>.from(d['skills'] ?? []);
+        final verified    = d['verified']     ?? false;
 
-  Future<void> _deleteAccount() async {
-    final passwordCtrl = TextEditingController();
-    bool isLoading = false;
-    String? errorMsg;
-    bool obscure = true;
+        return Scaffold(
+          backgroundColor: const Color(0xFFFFF8F9),
+          body: CustomScrollView(
+            slivers: [
 
-    await showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, set) => PopScope(
-          canPop: !isLoading,
-          child: AlertDialog(
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-            title: const Row(children: [
-              Icon(Icons.warning_rounded, color: Colors.red, size: 22),
-              SizedBox(width: 10),
-              Text('Supprimer le compte', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
-            ]),
-            content: Column(mainAxisSize: MainAxisSize.min, children: [
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(color: Colors.red.withOpacity(0.08), borderRadius: BorderRadius.circular(12)),
-                child: const Text('⚠️ Action irréversible. Toutes vos données seront supprimées.',
-                    style: TextStyle(fontSize: 13, color: Colors.red, height: 1.4), textAlign: TextAlign.center),
+              // ── Collapsible header with photo ──────────────
+              _ProfileAppBar(
+                fullName:    fullName,
+                photoUrl:    photoUrl,
+                location:    location,
+                description: description,
+                experience:  experience,
               ),
-              const SizedBox(height: 14),
-              if (errorMsg != null) ...[
-                Container(
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(color: Colors.red.withOpacity(0.1), borderRadius: BorderRadius.circular(10)),
-                  child: Text(errorMsg!, style: const TextStyle(fontSize: 13, color: Colors.red)),
-                ),
-                const SizedBox(height: 10),
-              ],
-              TextField(
-                controller: passwordCtrl,
-                obscureText: obscure,
-                decoration: InputDecoration(
-                  hintText: 'Confirmez votre mot de passe',
-                  filled: true, fillColor: const Color(0xFFFFF5F7),
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
-                  focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Colors.red, width: 1.5)),
-                  suffixIcon: GestureDetector(
-                    onTap: () => set(() => obscure = !obscure),
-                    child: Icon(obscure ? Icons.visibility_outlined : Icons.visibility_off_outlined, color: Colors.grey, size: 20),
+
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.all(20),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+
+                      // ── 3 stat chips ───────────────────────
+                      _StatsRow(
+                          experience: experience,
+                          reviewCount: reviewCount,
+                          rating: rating),
+                      const SizedBox(height: 20),
+
+                      // ── Verified badge (conditional) ───────
+                      if (verified) ...[
+                        _VerifiedCard(),
+                        const SizedBox(height: 16),
+                      ],
+
+                      // ── About / Experience / Skills ────────
+                      _InfoCard(
+                        icon: Icons.info_outline_rounded,
+                        title: 'À propos de moi',
+                        child: Text(description,
+                            style: TextStyle(
+                                fontSize: 14,
+                                color: Colors.grey[700],
+                                height: 1.6)),
+                      ),
+                      const SizedBox(height: 16),
+
+                      _InfoCard(
+                        icon: Icons.work_outline_rounded,
+                        title: 'Expérience',
+                        child: Chip(
+                          avatar: Icon(Icons.work_rounded, color: _pink, size: 16),
+                          label: Text("$experience d'expérience"),
+                          backgroundColor: _pink.withOpacity(0.1),
+                          labelStyle: TextStyle(
+                              color: _pink, fontWeight: FontWeight.w600),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+
+                      _InfoCard(
+                        icon: Icons.star_outline_rounded,
+                        title: 'Compétences',
+                        child: skills.isEmpty
+                            ? Text('Aucune compétence renseignée.',
+                                style: TextStyle(
+                                    color: Colors.grey[500], fontSize: 13))
+                            : Wrap(
+                                spacing: 8,
+                                runSpacing: 8,
+                                children: skills
+                                    .map((s) => _SkillChip(label: s))
+                                    .toList(),
+                              ),
+                      ),
+                      const SizedBox(height: 16),
+
+                      // ── Reviews from Firestore ─────────────
+                      _InfoCard(
+                        icon: Icons.reviews_outlined,
+                        title: 'Avis des parents',
+                        child: _ReviewsList(stream: _reviewsRef.snapshots()),
+                      ),
+                      const SizedBox(height: 30),
+                    ],
                   ),
                 ),
               ),
-            ]),
-            actions: [
-              TextButton(
-                onPressed: isLoading ? null : () => Navigator.pop(ctx),
-                child: const Text('Annuler', style: TextStyle(color: Colors.grey)),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+// SMALL WIDGETS
+// ─────────────────────────────────────────────────────────────
+
+// Collapsible app bar with profile photo, name and location
+class _ProfileAppBar extends StatelessWidget {
+  final String fullName, photoUrl, location, description, experience;
+  const _ProfileAppBar({
+    required this.fullName,
+    required this.photoUrl,
+    required this.location,
+    required this.description,
+    required this.experience,
+  });
+
+  static const _pink = Color(0xFFFF6B8A);
+
+  @override
+  Widget build(BuildContext context) {
+    return SliverAppBar(
+      expandedHeight: 280,
+      pinned: true,
+      backgroundColor: _pink,
+      leading: IconButton(
+        icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.white),
+        onPressed: () => Navigator.pop(context),
+      ),
+      actions: [
+        IconButton(
+          icon: const Icon(Icons.edit_rounded, color: Colors.white),
+          onPressed: () => Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => BabysitterEditProfileScreen(
+                name: fullName,
+                description: description,
+                experience: experience,
               ),
-              TextButton(
-                onPressed: isLoading ? null : () async {
-                  if (passwordCtrl.text.isEmpty) {
-                    set(() => errorMsg = 'Saisissez votre mot de passe.');
-                    return;
-                  }
-                  set(() { isLoading = true; errorMsg = null; });
-                  try {
-                    final user = FirebaseAuth.instance.currentUser!;
-                    final uid  = user.uid;
-                    final email = (user.email ?? '').toLowerCase();
+            ),
+          ),
+        ),
+      ],
+      flexibleSpace: FlexibleSpaceBar(
+        background: Container(
+          color: _pink,
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const SizedBox(height: 40),
 
-                    // 1. Réauthentifier
-                    final cred = EmailAuthProvider.credential(email: user.email!, password: passwordCtrl.text);
-                    await user.reauthenticateWithCredential(cred);
+              // Avatar with camera badge
+              Stack(alignment: Alignment.bottomRight, children: [
+                CircleAvatar(
+                  radius: 56,
+                  backgroundColor: Colors.white,
+                  child: CircleAvatar(
+                    radius: 52,
+                    backgroundColor: _pink.withOpacity(0.2),
+                    backgroundImage:
+                        photoUrl.isNotEmpty ? NetworkImage(photoUrl) : null,
+                    child: photoUrl.isEmpty
+                        ? Text(
+                            fullName.isNotEmpty
+                                ? fullName[0].toUpperCase()
+                                : '?',
+                            style: const TextStyle(
+                                fontSize: 36,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.white),
+                          )
+                        : null,
+                  ),
+                ),
+                CircleAvatar(
+                  radius: 14,
+                  backgroundColor: _pink,
+                  child: const Icon(Icons.camera_alt_rounded,
+                      color: Colors.white, size: 14),
+                ),
+              ]),
+              const SizedBox(height: 12),
 
-                    // 2. Supprimer sous-collection documents/
-                    try {
-                      final docsSnap = await FirebaseFirestore.instance
-                          .collection('users').doc(uid).collection('documents').get();
-                      for (final d in docsSnap.docs) await d.reference.delete();
-                    } catch (_) {}
+              Text(fullName,
+                  style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 22,
+                      fontWeight: FontWeight.bold)),
+              const SizedBox(height: 4),
 
-                    // 3. Enregistrer dans deleted_accounts
-                    try {
-                      await FirebaseFirestore.instance.collection('deleted_accounts').doc(uid).set({
-                        'uid': uid, 'email': email,
-                        'prenom': widget.nounouData['prenom'] ?? '',
-                        'nom': widget.nounouData['nom'] ?? '',
-                        'deletedAt': FieldValue.serverTimestamp(),
-                        'deletedBySelf': true,
-                      });
-                    } catch (_) {}
-
-                    // 4. Supprimer document Firestore
-                    await FirebaseFirestore.instance.collection('users').doc(uid).delete();
-
-                    // 5. Supprimer compte Auth
-                    await user.delete();
-
-                    if (ctx.mounted) Navigator.of(ctx).pop();
-                  } on FirebaseAuthException catch (e) {
-                    set(() {
-                      isLoading = false;
-                      errorMsg = (e.code == 'wrong-password' || e.code == 'invalid-credential')
-                          ? 'Mot de passe incorrect.' : 'Erreur: ${e.code}';
-                    });
-                  } catch (e) {
-                    set(() { isLoading = false; errorMsg = 'Erreur: $e'; });
-                  }
-                },
-                child: isLoading
-                    ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.red))
-                    : const Text('Supprimer', style: TextStyle(color: Colors.red, fontWeight: FontWeight.w800)),
-              ),
+              if (location.isNotEmpty)
+                Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                  const Icon(Icons.location_on_rounded,
+                      color: Colors.white70, size: 14),
+                  const SizedBox(width: 4),
+                  Text(location,
+                      style: const TextStyle(
+                          color: Colors.white70, fontSize: 13)),
+                ]),
             ],
           ),
         ),
       ),
     );
-    passwordCtrl.dispose();
-
-    // Si supprimé → aller au login
-    if (FirebaseAuth.instance.currentUser == null && mounted) {
-      Navigator.pushAndRemoveUntil(context, PageRouteBuilder(
-        pageBuilder: (_, __, ___) => const RoleSelectionScreen(),
-        transitionsBuilder: (_, a, __, child) => FadeTransition(opacity: a, child: child),
-        transitionDuration: const Duration(milliseconds: 400),
-      ), (r) => false);
-    }
   }
+}
+
+// Row of 3 stat cards: experience, reviews, rating
+class _StatsRow extends StatelessWidget {
+  final String experience;
+  final int reviewCount;
+  final double rating;
+  const _StatsRow({
+    required this.experience,
+    required this.reviewCount,
+    required this.rating,
+  });
+
+  static const _pink = Color(0xFFFF6B8A);
 
   @override
   Widget build(BuildContext context) {
-    final prenom = widget.nounouData['prenom'] ?? '';
-    final nom = widget.nounouData['nom'] ?? '';
-    final ville = widget.nounouData['ville'] ?? 'Non renseignée';
-    final prix = widget.nounouData['prixHeure'];
-    final score = (widget.nounouData['score'] ?? 0.0).toDouble();
-    final nbAvis = widget.nounouData['nbAvis'] ?? 0;
-    final bio = widget.nounouData['bio'] ?? '';
-    final photoBase64 = widget.nounouData['photoBase64'] as String?;
-    final diplomes = List<String>.from(widget.nounouData['diplomes'] ?? []);
-    final competences = List<String>.from(widget.nounouData['competences'] ?? []);
-    final experiences = List<String>.from(widget.nounouData['experiences'] ?? []);
-    final ageGroups = List<String>.from(widget.nounouData['ageGroups'] ?? []);
-    final disponibilites = List<String>.from(widget.nounouData['disponibilites'] ?? []);
+    final items = [
+      (label: 'Expérience', value: experience),
+      (label: 'Avis',       value: reviewCount.toString()),
+      (label: 'Note',       value: '${rating.toStringAsFixed(1)} ⭐'),
+    ];
 
-    return Scaffold(
-      body: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter,
-              colors: [AppColors.backgroundGradientStart, Color(0xFFF8EEFF)]),
+    return Row(
+      children: items.map((item) => Expanded(
+        child: Card(
+          elevation: 0,
+          color: Colors.white,
+          shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(14)),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 14),
+            child: Column(children: [
+              Text(item.value,
+                  style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: _pink)),
+              const SizedBox(height: 4),
+              Text(item.label,
+                  style: TextStyle(
+                      fontSize: 11, color: Colors.grey[500])),
+            ]),
+          ),
         ),
-        child: CustomScrollView(slivers: [
+      )).toList(),
+    );
+  }
+}
 
-          SliverAppBar(
-            expandedHeight: 280, pinned: true,
-            backgroundColor: AppColors.primaryPink,
-            leading: GestureDetector(
-              onTap: () => Navigator.pop(context),
-              child: Container(margin: const EdgeInsets.all(8),
-                decoration: BoxDecoration(color: Colors.white.withOpacity(0.9), shape: BoxShape.circle),
-                child: const Icon(Icons.arrow_back_ios_new, size: 16, color: AppColors.textDark)),
+// Reusable card with icon + title + any child widget
+class _InfoCard extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final Widget child;
+  const _InfoCard({
+    required this.icon,
+    required this.title,
+    required this.child,
+  });
+
+  static const _pink = Color(0xFFFF6B8A);
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      elevation: 0,
+      color: Colors.white,
+      shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16)),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(children: [
+              Icon(icon, color: _pink, size: 18),
+              const SizedBox(width: 8),
+              Text(title,
+                  style: const TextStyle(
+                      fontWeight: FontWeight.w700, fontSize: 15)),
+            ]),
+            const SizedBox(height: 12),
+            const Divider(height: 1),
+            const SizedBox(height: 12),
+            child,
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// Purple skill chip
+class _SkillChip extends StatelessWidget {
+  final String label;
+  const _SkillChip({required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: BoxDecoration(
+        color: const Color(0xFF7C83FD).withOpacity(0.1),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Text(label,
+          style: const TextStyle(
+              color: Color(0xFF7C83FD),
+              fontSize: 12,
+              fontWeight: FontWeight.w500)),
+    );
+  }
+}
+
+// Gold verified badge card
+class _VerifiedCard extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      elevation: 0,
+      color: Colors.white,
+      shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16)),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Row(children: [
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: const Color(0xFFFFB347).withOpacity(0.15),
+              borderRadius: BorderRadius.circular(12),
             ),
-            actions: _isOwnProfile ? [
-              GestureDetector(
-                onTap: _deleteAccount,
-                child: Container(
-                  margin: const EdgeInsets.all(8),
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: Colors.red.withOpacity(0.9),
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: const Row(mainAxisSize: MainAxisSize.min, children: [
-                    Icon(Icons.delete_outline_rounded, color: Colors.white, size: 16),
-                    SizedBox(width: 4),
-                    Text('Supprimer', style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w700)),
-                  ]),
-                ),
-              ),
-            ] : null,
-            flexibleSpace: FlexibleSpaceBar(
-              background: Container(
-                decoration: const BoxDecoration(
-                  gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight,
-                      colors: [Color(0xFFFF8FAB), AppColors.primaryPink]),
-                ),
-                child: SafeArea(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-                  const SizedBox(height: 20),
-                  Container(
-                    width: 100, height: 100,
-                    decoration: BoxDecoration(shape: BoxShape.circle,
-                        border: Border.all(color: Colors.white, width: 3),
-                        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 20)]),
-                    child: ClipOval(child: photoBase64 != null
-                        ? Image.memory(base64Decode(photoBase64), fit: BoxFit.cover)
-                        : Container(color: Colors.white.withOpacity(0.3),
-                        child: Center(child: Text(_initiales,
-                            style: const TextStyle(fontSize: 34, fontWeight: FontWeight.w800, color: Colors.white))))),
-                  ),
-                  const SizedBox(height: 12),
-                  Text('$prenom $nom',
-                      style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: Colors.white)),
-                  const SizedBox(height: 6),
-                  Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                    const Icon(Icons.location_on_outlined, size: 14, color: Colors.white70),
-                    const SizedBox(width: 4),
-                    Text(ville, style: const TextStyle(fontSize: 13, color: Colors.white70)),
-                    if (prix != null) ...[
-                      const SizedBox(width: 16),
-                      const Icon(Icons.payments_outlined, size: 14, color: Colors.white70),
-                      const SizedBox(width: 4),
-                      Text('$prix DA/h', style: const TextStyle(fontSize: 13, color: Colors.white, fontWeight: FontWeight.w700)),
-                    ],
-                  ]),
-                  const SizedBox(height: 10),
-                  if (score > 0) Row(mainAxisAlignment: MainAxisAlignment.center,
-                    children: List.generate(5, (i) => Icon(
-                      i < score.floor() ? Icons.star_rounded : (i < score ? Icons.star_half_rounded : Icons.star_outline_rounded),
-                      color: Colors.amber, size: 20,
-                    ))..add(const SizedBox(width: 8))
-                      ..add(Text('$score ($nbAvis avis)',
-                          style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600))),
-                  ),
-                ])),
-              ),
-            ),
+            child: const Icon(Icons.verified_rounded,
+                color: Color(0xFFFFB347), size: 28),
           ),
-
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.all(20),
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-
-                // ── Boutons RDV + Message ──
-                Row(children: [
-                  Expanded(
-                    child: ElevatedButton.icon(
-                      onPressed: () => Navigator.push(context, PageRouteBuilder(
-                        pageBuilder: (_, __, ___) => BookingScreen(nounouData: widget.nounouData),
-                        transitionsBuilder: (_, anim, __, child) => FadeTransition(opacity: anim, child: child),
-                        transitionDuration: const Duration(milliseconds: 350),
-                      )),
-                      icon: const Icon(Icons.calendar_month_rounded, size: 18),
-                      label: const Text('RDV', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: AppColors.primaryPink, foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                        elevation: 0,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: ElevatedButton.icon(
-                      onPressed: () => Navigator.push(context, PageRouteBuilder(
-                        pageBuilder: (_, __, ___) => ChatScreen(
-                          otherUid: widget.nounouData['uid'] ?? '',
-                          otherPrenom: prenom,
-                          otherNom: nom,
-                          otherPhotoBase64: widget.nounouData['photoBase64'] as String?,
-                        ),
-                        transitionsBuilder: (_, anim, __, child) => SlideTransition(
-                          position: Tween<Offset>(begin: const Offset(1, 0), end: Offset.zero)
-                              .animate(CurvedAnimation(parent: anim, curve: Curves.easeOutCubic)),
-                          child: child,
-                        ),
-                        transitionDuration: const Duration(milliseconds: 350),
-                      )),
-                      icon: const Icon(Icons.chat_bubble_outline_rounded, size: 18),
-                      label: const Text('Message', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: AppColors.buttonBlue, foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                        elevation: 0,
-                      ),
-                    ),
-                  ),
-                ]),
-                const SizedBox(height: 20),
-
-                if (bio.isNotEmpty) ...[
-                  _SectionTitle(label: 'À propos'),
-                  const SizedBox(height: 10),
-                  Container(padding: const EdgeInsets.all(16), decoration: _cardDecoration(),
-                      child: Text(bio, style: const TextStyle(fontSize: 14, color: AppColors.textGrey, height: 1.6))),
-                  const SizedBox(height: 20),
-                ],
-
-                if (disponibilites.isNotEmpty) ...[
-                  _SectionTitle(label: '🕐 Disponibilités'),
-                  const SizedBox(height: 10),
-                  Wrap(spacing: 8, runSpacing: 8, children: disponibilites.map((d) => _Tag(label: d, color: AppColors.buttonBlue)).toList()),
-                  const SizedBox(height: 20),
-                ],
-
-                if (ageGroups.isNotEmpty) ...[
-                  _SectionTitle(label: '👶 Tranches d\'âge acceptées'),
-                  const SizedBox(height: 10),
-                  Wrap(spacing: 8, runSpacing: 8, children: ageGroups.map((a) => _Tag(label: a, color: AppColors.primaryPink)).toList()),
-                  const SizedBox(height: 20),
-                ],
-
-                if (diplomes.isNotEmpty) ...[
-                  _SectionTitle(label: '🎓 Diplômes'),
-                  const SizedBox(height: 10),
-                  Container(padding: const EdgeInsets.all(16), decoration: _cardDecoration(),
-                    child: Column(children: diplomes.asMap().entries.map((e) => Column(children: [
-                      Row(children: [
-                        Container(width: 8, height: 8, decoration: const BoxDecoration(color: AppColors.buttonBlue, shape: BoxShape.circle)),
-                        const SizedBox(width: 12),
-                        Expanded(child: Text(e.value, style: const TextStyle(fontSize: 14, color: AppColors.textDark, fontWeight: FontWeight.w500))),
-                      ]),
-                      if (e.key < diplomes.length - 1) const Divider(height: 16, color: Color(0xFFF5EEF0)),
-                    ])).toList()),
-                  ),
-                  const SizedBox(height: 20),
-                ],
-
-                if (competences.isNotEmpty) ...[
-                  _SectionTitle(label: '⭐ Compétences'),
-                  const SizedBox(height: 10),
-                  Wrap(spacing: 8, runSpacing: 8, children: competences.map((c) => _Tag(label: c, color: const Color(0xFF9B59B6))).toList()),
-                  const SizedBox(height: 20),
-                ],
-
-                if (experiences.isNotEmpty) ...[
-                  _SectionTitle(label: '💼 Expériences'),
-                  const SizedBox(height: 10),
-                  Container(padding: const EdgeInsets.all(16), decoration: _cardDecoration(),
-                    child: Column(children: experiences.asMap().entries.map((e) => Column(children: [
-                      Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                        Container(margin: const EdgeInsets.only(top: 6), width: 8, height: 8,
-                            decoration: const BoxDecoration(color: AppColors.primaryPink, shape: BoxShape.circle)),
-                        const SizedBox(width: 12),
-                        Expanded(child: Text(e.value, style: const TextStyle(fontSize: 14, color: AppColors.textDark, fontWeight: FontWeight.w500, height: 1.4))),
-                      ]),
-                      if (e.key < experiences.length - 1) const Divider(height: 16, color: Color(0xFFF5EEF0)),
-                    ])).toList()),
-                  ),
-                  const SizedBox(height: 20),
-                ],
-
-                // ── Avis depuis Firestore ──
-                const _SectionTitle(label: '💬 Avis'),
-                const SizedBox(height: 10),
-                AvisNounouSection(nounouUid: widget.nounouData['uid'] ?? ''),
-
-                const SizedBox(height: 40),
-              ]),
-            ),
-          ),
+          const SizedBox(width: 14),
+          Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            const Text('Profil vérifié',
+                style: TextStyle(
+                    fontWeight: FontWeight.w700, fontSize: 15)),
+            Text('Votre identité a été confirmée',
+                style: TextStyle(
+                    color: Colors.grey[500], fontSize: 12)),
+          ]),
         ]),
       ),
     );
   }
-
-  BoxDecoration _cardDecoration() => BoxDecoration(
-    color: Colors.white, borderRadius: BorderRadius.circular(16),
-    boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 16, offset: const Offset(0, 4))],
-  );
 }
 
-class _SectionTitle extends StatelessWidget {
-  final String label;
-  const _SectionTitle({required this.label});
-  @override
-  Widget build(BuildContext context) => Text(label,
-      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: AppColors.textDark));
-}
+// Streams and renders the list of parent reviews
+class _ReviewsList extends StatelessWidget {
+  final Stream<QuerySnapshot<Map<String, dynamic>>> stream;
+  const _ReviewsList({required this.stream});
 
-class _Tag extends StatelessWidget {
-  final String label; final Color color;
-  const _Tag({required this.label, required this.color});
-  @override
-  Widget build(BuildContext context) => Container(
-    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-    decoration: BoxDecoration(color: color.withOpacity(0.1), borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: color.withOpacity(0.3))),
-    child: Text(label, style: TextStyle(fontSize: 13, color: color, fontWeight: FontWeight.w600)),
-  );
-}
+  static const _pink = Color(0xFFFF6B8A);
 
-class _CommentCard extends StatelessWidget {
-  final Map<String, dynamic> comment;
-  const _CommentCard({required this.comment});
   @override
   Widget build(BuildContext context) {
-    final auteur = comment['auteur'] ?? 'Anonyme';
-    final texte = comment['texte'] ?? '';
-    final note = (comment['note'] ?? 0).toDouble();
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12), padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16),
-          boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, 3))]),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-          Text(auteur, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: AppColors.textDark)),
-          Row(children: List.generate(5, (i) => Icon(i < note ? Icons.star_rounded : Icons.star_outline_rounded,
-              color: Colors.amber, size: 14))),
-        ]),
-        if (texte.isNotEmpty) ...[
-          const SizedBox(height: 8),
-          Text(texte, style: const TextStyle(fontSize: 13, color: AppColors.textGrey, height: 1.5)),
-        ],
-      ]),
+    return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+      stream: stream,
+      builder: (_, snap) {
+        if (snap.connectionState == ConnectionState.waiting) {
+          return const Center(
+              child: CircularProgressIndicator(strokeWidth: 2));
+        }
+
+        final docs = snap.data?.docs ?? [];
+        if (docs.isEmpty) {
+          return Text('Aucun avis pour le moment.',
+              style: TextStyle(color: Colors.grey[500], fontSize: 13));
+        }
+
+        return Column(
+          children: docs.map((doc) {
+            final d      = doc.data();
+            final name   = d['reviewerName'] ?? 'Anonyme';
+            final comment= d['comment']      ?? '';
+            final rating = (d['rating']      ?? 5).toInt().clamp(1, 5);
+
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Reviewer initials
+                  CircleAvatar(
+                    radius: 18,
+                    backgroundColor: _pink.withOpacity(0.2),
+                    child: Text(name[0].toUpperCase(),
+                        style: TextStyle(
+                            color: _pink,
+                            fontWeight: FontWeight.bold)),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(name,
+                                style: const TextStyle(
+                                    fontWeight: FontWeight.w600,
+                                    fontSize: 13)),
+                            // Star rating
+                            Row(
+                              children: List.generate(
+                                rating,
+                                (_) => const Icon(Icons.star_rounded,
+                                    color: Color(0xFFFFB347), size: 14),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 4),
+                        Text(comment,
+                            style: TextStyle(
+                                color: Colors.grey[600], fontSize: 12)),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            );
+          }).toList(),
+        );
+      },
     );
   }
 }
