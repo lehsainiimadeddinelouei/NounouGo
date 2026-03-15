@@ -4,21 +4,22 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'babysitter_edit_profile_screen.dart';
 
 // ─────────────────────────────────────────────────────────────
-// SCREEN — Shows the babysitter's public profile
+// SCREEN — Displays the babysitter's public-facing profile
 // ─────────────────────────────────────────────────────────────
 class NounouProfileScreen extends StatelessWidget {
   const NounouProfileScreen({super.key});
 
   static const _pink = Color(0xFFFF6B8A);
 
-  // ── Firebase shortcuts ─────────────────────────────────────
-  static final _uid = FirebaseAuth.instance.currentUser!.uid;
+  // FIX 3: Use getter instead of static final so the uid is re-read on each
+  // access — static final is computed once and can become stale after logout.
+  String get _uid => FirebaseAuth.instance.currentUser!.uid;
 
-  static final _profileRef = FirebaseFirestore.instance
-      .collection('babysitters')
-      .doc(_uid);
+  DocumentReference<Map<String, dynamic>> get _profileRef =>
+      FirebaseFirestore.instance.collection('babysitters').doc(_uid);
 
-  static final _reviewsRef = _profileRef
+  // Last 5 reviews ordered by most recent
+  Query<Map<String, dynamic>> get _reviewsRef => _profileRef
       .collection('reviews')
       .orderBy('createdAt', descending: true)
       .limit(5);
@@ -29,13 +30,13 @@ class NounouProfileScreen extends StatelessWidget {
       stream: _profileRef.snapshots(),
       builder: (context, snap) {
 
-        // Show loader while waiting for first data
+        // Show a full-screen loader while waiting for the first snapshot
         if (snap.connectionState == ConnectionState.waiting) {
           return const Scaffold(
               body: Center(child: CircularProgressIndicator()));
         }
 
-        // Read profile fields with safe fallbacks
+        // Read every field with a safe fallback value
         final d           = snap.data?.data() ?? {};
         final fullName    = d['fullName']      ?? FirebaseAuth.instance.currentUser?.displayName ?? 'Nounou';
         final photoUrl    = d['photoUrl']      ?? FirebaseAuth.instance.currentUser?.photoURL    ?? '';
@@ -52,7 +53,7 @@ class NounouProfileScreen extends StatelessWidget {
           body: CustomScrollView(
             slivers: [
 
-              // ── Collapsible header with photo ──────────────
+              // ── Collapsible pink header with photo ─────────
               _ProfileAppBar(
                 fullName:    fullName,
                 photoUrl:    photoUrl,
@@ -68,20 +69,20 @@ class NounouProfileScreen extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
 
-                      // ── 3 stat chips ───────────────────────
+                      // ── 3 stat chips: experience, reviews, rating ──
                       _StatsRow(
-                          experience: experience,
+                          experience:  experience,
                           reviewCount: reviewCount,
-                          rating: rating),
+                          rating:      rating),
                       const SizedBox(height: 20),
 
-                      // ── Verified badge (conditional) ───────
+                      // ── Verified badge — shown only when verified == true ──
                       if (verified) ...[
                         _VerifiedCard(),
                         const SizedBox(height: 16),
                       ],
 
-                      // ── About / Experience / Skills ────────
+                      // ── About me ───────────────────────────
                       _InfoCard(
                         icon: Icons.info_outline_rounded,
                         title: 'À propos de moi',
@@ -93,6 +94,7 @@ class NounouProfileScreen extends StatelessWidget {
                       ),
                       const SizedBox(height: 16),
 
+                      // ── Experience chip ────────────────────
                       _InfoCard(
                         icon: Icons.work_outline_rounded,
                         title: 'Expérience',
@@ -106,24 +108,25 @@ class NounouProfileScreen extends StatelessWidget {
                       ),
                       const SizedBox(height: 16),
 
+                      // ── Skills list ────────────────────────
                       _InfoCard(
                         icon: Icons.star_outline_rounded,
                         title: 'Compétences',
                         child: skills.isEmpty
                             ? Text('Aucune compétence renseignée.',
-                                style: TextStyle(
-                                    color: Colors.grey[500], fontSize: 13))
+                            style: TextStyle(
+                                color: Colors.grey[500], fontSize: 13))
                             : Wrap(
-                                spacing: 8,
-                                runSpacing: 8,
-                                children: skills
-                                    .map((s) => _SkillChip(label: s))
-                                    .toList(),
-                              ),
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: skills
+                              .map((s) => _SkillChip(label: s))
+                              .toList(),
+                        ),
                       ),
                       const SizedBox(height: 16),
 
-                      // ── Reviews from Firestore ─────────────
+                      // ── Parent reviews from Firestore ──────
                       _InfoCard(
                         icon: Icons.reviews_outlined,
                         title: 'Avis des parents',
@@ -143,10 +146,10 @@ class NounouProfileScreen extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────
-// SMALL WIDGETS
+// SUB-WIDGETS
 // ─────────────────────────────────────────────────────────────
 
-// Collapsible app bar with profile photo, name and location
+// Collapsible SliverAppBar — pink background with avatar, name, location
 class _ProfileAppBar extends StatelessWidget {
   final String fullName, photoUrl, location, description, experience;
   const _ProfileAppBar({
@@ -169,6 +172,7 @@ class _ProfileAppBar extends StatelessWidget {
         icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.white),
         onPressed: () => Navigator.pop(context),
       ),
+      // Edit button in the top-right corner
       actions: [
         IconButton(
           icon: const Icon(Icons.edit_rounded, color: Colors.white),
@@ -176,9 +180,9 @@ class _ProfileAppBar extends StatelessWidget {
             context,
             MaterialPageRoute(
               builder: (_) => BabysitterEditProfileScreen(
-                name: fullName,
+                name:        fullName,
                 description: description,
-                experience: experience,
+                experience:  experience,
               ),
             ),
           ),
@@ -192,38 +196,57 @@ class _ProfileAppBar extends StatelessWidget {
             children: [
               const SizedBox(height: 40),
 
-              // Avatar with camera badge
-              Stack(alignment: Alignment.bottomRight, children: [
-                CircleAvatar(
-                  radius: 56,
-                  backgroundColor: Colors.white,
-                  child: CircleAvatar(
-                    radius: 52,
-                    backgroundColor: _pink.withOpacity(0.2),
-                    backgroundImage:
-                        photoUrl.isNotEmpty ? NetworkImage(photoUrl) : null,
-                    child: photoUrl.isEmpty
-                        ? Text(
-                            fullName.isNotEmpty
-                                ? fullName[0].toUpperCase()
-                                : '?',
-                            style: const TextStyle(
-                                fontSize: 36,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.white),
-                          )
-                        : null,
+              // FIX 4: Wrapped avatar in GestureDetector so tapping the photo
+              // opens the edit screen — the camera icon was decorative before.
+              GestureDetector(
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => BabysitterEditProfileScreen(
+                      name:        fullName,
+                      description: description,
+                      experience:  experience,
+                    ),
                   ),
                 ),
-                CircleAvatar(
-                  radius: 14,
-                  backgroundColor: _pink,
-                  child: const Icon(Icons.camera_alt_rounded,
-                      color: Colors.white, size: 14),
-                ),
-              ]),
+                child: Stack(alignment: Alignment.bottomRight, children: [
+                  CircleAvatar(
+                    radius: 56,
+                    backgroundColor: Colors.white,
+                    child: CircleAvatar(
+                      radius: 52,
+                      backgroundColor: _pink.withOpacity(0.2),
+                      backgroundImage:
+                      photoUrl.isNotEmpty ? NetworkImage(photoUrl) : null,
+                      child: photoUrl.isEmpty
+                          ? Text(
+                        fullName.isNotEmpty
+                            ? fullName[0].toUpperCase()
+                            : '?',
+                        style: const TextStyle(
+                            fontSize: 36,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.white),
+                      )
+                          : null,
+                    ),
+                  ),
+                  // Camera badge — now actually tappable (see GestureDetector above)
+                  CircleAvatar(
+                    radius: 14,
+                    backgroundColor: Colors.white,
+                    child: CircleAvatar(
+                      radius: 12,
+                      backgroundColor: _pink,
+                      child: const Icon(Icons.camera_alt_rounded,
+                          color: Colors.white, size: 13),
+                    ),
+                  ),
+                ]),
+              ),
               const SizedBox(height: 12),
 
+              // Display name
               Text(fullName,
                   style: const TextStyle(
                       color: Colors.white,
@@ -231,6 +254,7 @@ class _ProfileAppBar extends StatelessWidget {
                       fontWeight: FontWeight.bold)),
               const SizedBox(height: 4),
 
+              // Location row — hidden when location is empty
               if (location.isNotEmpty)
                 Row(mainAxisAlignment: MainAxisAlignment.center, children: [
                   const Icon(Icons.location_on_rounded,
@@ -248,7 +272,7 @@ class _ProfileAppBar extends StatelessWidget {
   }
 }
 
-// Row of 3 stat cards: experience, reviews, rating
+// Row of three stat cards: experience / review count / average rating
 class _StatsRow extends StatelessWidget {
   final String experience;
   final int reviewCount;
@@ -296,7 +320,7 @@ class _StatsRow extends StatelessWidget {
   }
 }
 
-// Reusable card with icon + title + any child widget
+// Generic card with icon header + divider + any child widget
 class _InfoCard extends StatelessWidget {
   final IconData icon;
   final String title;
@@ -321,6 +345,7 @@ class _InfoCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // Card header row: icon + title
             Row(children: [
               Icon(icon, color: _pink, size: 18),
               const SizedBox(width: 8),
@@ -339,7 +364,7 @@ class _InfoCard extends StatelessWidget {
   }
 }
 
-// Purple skill chip
+// Purple pill chip used for skills
 class _SkillChip extends StatelessWidget {
   final String label;
   const _SkillChip({required this.label});
@@ -361,7 +386,7 @@ class _SkillChip extends StatelessWidget {
   }
 }
 
-// Gold verified badge card
+// Gold verified-identity badge card
 class _VerifiedCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
@@ -422,17 +447,17 @@ class _ReviewsList extends StatelessWidget {
 
         return Column(
           children: docs.map((doc) {
-            final d      = doc.data();
-            final name   = d['reviewerName'] ?? 'Anonyme';
-            final comment= d['comment']      ?? '';
-            final rating = (d['rating']      ?? 5).toInt().clamp(1, 5);
+            final d       = doc.data();
+            final name    = d['reviewerName'] ?? 'Anonyme';
+            final comment = d['comment']      ?? '';
+            final rating  = (d['rating']      ?? 5).toInt().clamp(1, 5);
 
             return Padding(
               padding: const EdgeInsets.only(bottom: 12),
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Reviewer initials
+                  // Reviewer avatar with first-letter initials
                   CircleAvatar(
                     radius: 18,
                     backgroundColor: _pink.withOpacity(0.2),
@@ -453,11 +478,11 @@ class _ReviewsList extends StatelessWidget {
                                 style: const TextStyle(
                                     fontWeight: FontWeight.w600,
                                     fontSize: 13)),
-                            // Star rating
+                            // Star rating — one icon per point
                             Row(
                               children: List.generate(
                                 rating,
-                                (_) => const Icon(Icons.star_rounded,
+                                    (_) => const Icon(Icons.star_rounded,
                                     color: Color(0xFFFFB347), size: 14),
                               ),
                             ),
