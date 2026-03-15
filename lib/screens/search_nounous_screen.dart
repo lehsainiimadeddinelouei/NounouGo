@@ -56,11 +56,11 @@ class _SearchNounousScreenState extends State<SearchNounousScreen>
 
       final list = query.docs
           .map((doc) {
-            final data = doc.data();
-            data['uid'] = doc.id;
-            return data;
-          })
-          // Exclure les nounous bloquées ou non autorisées
+        final data = doc.data();
+        data['uid'] = doc.id;
+        return data;
+      })
+      // Exclure les nounous bloquées ou non autorisées
           .where((n) => !(n['bloque'] ?? false) && ((n['compteActif'] ?? false) || (n['autoriseeATravail'] ?? false)))
           .toList();
 
@@ -117,13 +117,9 @@ class _SearchNounousScreenState extends State<SearchNounousScreen>
     String? tempTranche = _selectedTranche;
     double? tempPrix = _maxPrix;
 
-    // Liste des villes disponibles
-    final villes = _nounous
-        .map((n) => n['ville'] as String? ?? '')
-        .where((v) => v.isNotEmpty)
-        .toSet()
-        .toList()
-      ..sort();
+    // Contrôleur ville persistant — créé une seule fois avec le curseur à la fin
+    final villeCtrl = TextEditingController(text: tempVille ?? '');
+    villeCtrl.selection = TextSelection.collapsed(offset: villeCtrl.text.length);
 
     showModalBottomSheet(
       context: context,
@@ -149,6 +145,7 @@ class _SearchNounousScreenState extends State<SearchNounousScreen>
                 const Text('Filtres', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: AppColors.textDark)),
                 TextButton(
                   onPressed: () {
+                    villeCtrl.clear();
                     setSheetState(() { tempVille = null; tempDispo = null; tempTranche = null; tempPrix = null; });
                   },
                   child: Text('Réinitialiser', style: TextStyle(color: AppColors.primaryPink, fontWeight: FontWeight.w700)),
@@ -157,64 +154,66 @@ class _SearchNounousScreenState extends State<SearchNounousScreen>
               const SizedBox(height: 24),
 
               // ── Ville ──
-              _FilterLabel(label: '📍 Ville'),
+              _FilterLabel(icon: Icons.location_on_rounded, label: 'Ville'),
               const SizedBox(height: 10),
               TextField(
+                controller: villeCtrl,
                 decoration: InputDecoration(
-                  hintText: 'Ex: Alger, Oran...',
+                  hintText: 'Ex: Alger, Oran, Tlemcen...',
                   hintStyle: const TextStyle(color: AppColors.textGrey),
                   filled: true, fillColor: AppColors.lightPink,
                   border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
                   contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                   prefixIcon: const Icon(Icons.location_on_outlined, color: AppColors.primaryPink),
                 ),
-                onChanged: (v) => setSheetState(() => tempVille = v.isEmpty ? null : v),
-                controller: TextEditingController(text: tempVille),
+                onChanged: (v) {
+                  tempVille = v.trim().isEmpty ? null : v.trim();
+                },
               ),
               const SizedBox(height: 20),
 
               // ── Disponibilité ──
-              _FilterLabel(label: '🕐 Disponibilité'),
+              _FilterLabel(icon: Icons.schedule_rounded, label: 'Disponibilité'),
               const SizedBox(height: 10),
               Wrap(spacing: 8, runSpacing: 8, children: _disponibilites.map((d) =>
-                GestureDetector(
-                  onTap: () => setSheetState(() => tempDispo = tempDispo == d ? null : d),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                    decoration: BoxDecoration(
-                      color: tempDispo == d ? AppColors.buttonBlue : AppColors.lightPink,
-                      borderRadius: BorderRadius.circular(20),
+                  GestureDetector(
+                    onTap: () => setSheetState(() => tempDispo = tempDispo == d ? null : d),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: tempDispo == d ? AppColors.buttonBlue : AppColors.lightPink,
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Text(d, style: TextStyle(
+                          fontSize: 13, fontWeight: FontWeight.w600,
+                          color: tempDispo == d ? Colors.white : AppColors.textDark)),
                     ),
-                    child: Text(d, style: TextStyle(
-                        fontSize: 13, fontWeight: FontWeight.w600,
-                        color: tempDispo == d ? Colors.white : AppColors.textDark)),
                   ),
-                ),
               ).toList()),
               const SizedBox(height: 20),
 
               // ── Tranche d'âge ──
-              _FilterLabel(label: '👶 Tranche d\'âge enfants'),
+              _FilterLabel(icon: Icons.child_care_rounded, label: 'Tranche d\'âge enfants'),
               const SizedBox(height: 10),
               Wrap(spacing: 8, runSpacing: 8, children: _tranches.map((t) =>
-                GestureDetector(
-                  onTap: () => setSheetState(() => tempTranche = tempTranche == t ? null : t),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                    decoration: BoxDecoration(
-                      color: tempTranche == t ? AppColors.primaryPink : AppColors.lightPink,
-                      borderRadius: BorderRadius.circular(20),
+                  GestureDetector(
+                    onTap: () => setSheetState(() => tempTranche = tempTranche == t ? null : t),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: tempTranche == t ? AppColors.primaryPink : AppColors.lightPink,
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Text(t, style: TextStyle(
+                          fontSize: 13, fontWeight: FontWeight.w600,
+                          color: tempTranche == t ? Colors.white : AppColors.textDark)),
                     ),
-                    child: Text(t, style: TextStyle(
-                        fontSize: 13, fontWeight: FontWeight.w600,
-                        color: tempTranche == t ? Colors.white : AppColors.textDark)),
                   ),
-                ),
               ).toList()),
               const SizedBox(height: 20),
 
               // ── Prix max ──
-              _FilterLabel(label: '💰 Prix max / heure : ${tempPrix != null ? '${tempPrix!.toInt()} DA' : 'Tous'}'),
+              _FilterLabel(icon: Icons.payments_rounded, label: 'Prix max / heure : ${tempPrix != null ? '${tempPrix!.toInt()} DA' : 'Tous'}'),
               Slider(
                 value: tempPrix ?? 5000,
                 min: 500, max: 5000, divisions: 18,
@@ -335,10 +334,10 @@ class _SearchNounousScreenState extends State<SearchNounousScreen>
                   SingleChildScrollView(
                     scrollDirection: Axis.horizontal,
                     child: Row(children: [
-                      if (_selectedVille != null) _FilterChip(label: '📍 $_selectedVille', onRemove: () { setState(() => _selectedVille = null); _applyFilters(); }),
-                      if (_selectedDisponibilite != null) _FilterChip(label: '🕐 $_selectedDisponibilite', onRemove: () { setState(() => _selectedDisponibilite = null); _applyFilters(); }),
-                      if (_selectedTranche != null) _FilterChip(label: '👶 $_selectedTranche', onRemove: () { setState(() => _selectedTranche = null); _applyFilters(); }),
-                      if (_maxPrix != null) _FilterChip(label: '💰 Max ${_maxPrix!.toInt()} DA', onRemove: () { setState(() => _maxPrix = null); _applyFilters(); }),
+                      if (_selectedVille != null) _FilterChip(icon: Icons.location_on_rounded, label: _selectedVille!, onRemove: () { setState(() => _selectedVille = null); _applyFilters(); }),
+                      if (_selectedDisponibilite != null) _FilterChip(icon: Icons.schedule_rounded, label: _selectedDisponibilite!, onRemove: () { setState(() => _selectedDisponibilite = null); _applyFilters(); }),
+                      if (_selectedTranche != null) _FilterChip(icon: Icons.child_care_rounded, label: _selectedTranche!, onRemove: () { setState(() => _selectedTranche = null); _applyFilters(); }),
+                      if (_maxPrix != null) _FilterChip(icon: Icons.payments_rounded, label: 'Max ${_maxPrix!.toInt()} DA', onRemove: () { setState(() => _maxPrix = null); _applyFilters(); }),
                     ]),
                   ),
               ]),
@@ -351,22 +350,22 @@ class _SearchNounousScreenState extends State<SearchNounousScreen>
               child: _isLoading
                   ? const Center(child: CircularProgressIndicator(color: AppColors.primaryPink))
                   : _filtered.isEmpty
-                      ? _EmptyState()
-                      : FadeTransition(
-                          opacity: _fadeAnim,
-                          child: ListView.builder(
-                            padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
-                            itemCount: _filtered.length,
-                            itemBuilder: (_, i) => _NounouCard(
-                              nounou: _filtered[i],
-                              onTap: () => Navigator.push(context, PageRouteBuilder(
-                                pageBuilder: (_, __, ___) => NounouProfileScreen(nounouData: _filtered[i]),
-                                transitionsBuilder: (_, anim, __, child) => FadeTransition(opacity: anim, child: child),
-                                transitionDuration: const Duration(milliseconds: 300),
-                              )),
-                            ),
-                          ),
-                        ),
+                  ? _EmptyState()
+                  : FadeTransition(
+                opacity: _fadeAnim,
+                child: ListView.builder(
+                  padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+                  itemCount: _filtered.length,
+                  itemBuilder: (_, i) => _NounouCard(
+                    nounou: _filtered[i],
+                    onTap: () => Navigator.push(context, PageRouteBuilder(
+                      pageBuilder: (_, __, ___) => NounouProfileScreen(nounouData: _filtered[i]),
+                      transitionsBuilder: (_, anim, __, child) => FadeTransition(opacity: anim, child: child),
+                      transitionDuration: const Duration(milliseconds: 300),
+                    )),
+                  ),
+                ),
+              ),
             ),
           ]),
         ),
@@ -378,26 +377,55 @@ class _SearchNounousScreenState extends State<SearchNounousScreen>
 // ── Widgets helper ──
 
 class _FilterLabel extends StatelessWidget {
+  final IconData icon;
   final String label;
-  const _FilterLabel({required this.label});
+  const _FilterLabel({required this.icon, required this.label});
   @override
-  Widget build(BuildContext context) => Text(label,
-      style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: AppColors.textDark));
+  Widget build(BuildContext context) => Row(children: [
+    Container(
+      width: 28, height: 28,
+      decoration: BoxDecoration(
+        color: AppColors.primaryPink.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Icon(icon, size: 15, color: AppColors.primaryPink),
+    ),
+    const SizedBox(width: 8),
+    Text(label,
+        style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: AppColors.textDark)),
+  ]);
 }
 
 class _FilterChip extends StatelessWidget {
+  final IconData icon;
   final String label;
   final VoidCallback onRemove;
-  const _FilterChip({required this.label, required this.onRemove});
+  const _FilterChip({required this.icon, required this.label, required this.onRemove});
   @override
   Widget build(BuildContext context) => Container(
     margin: const EdgeInsets.only(right: 8),
-    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-    decoration: BoxDecoration(color: AppColors.buttonBlue.withOpacity(0.1), borderRadius: BorderRadius.circular(20)),
+    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+    decoration: BoxDecoration(
+      color: AppColors.buttonBlue.withOpacity(0.08),
+      borderRadius: BorderRadius.circular(20),
+      border: Border.all(color: AppColors.buttonBlue.withOpacity(0.25)),
+    ),
     child: Row(mainAxisSize: MainAxisSize.min, children: [
+      Icon(icon, size: 13, color: AppColors.buttonBlue),
+      const SizedBox(width: 5),
       Text(label, style: const TextStyle(fontSize: 12, color: AppColors.buttonBlue, fontWeight: FontWeight.w600)),
       const SizedBox(width: 6),
-      GestureDetector(onTap: onRemove, child: const Icon(Icons.close, size: 14, color: AppColors.buttonBlue)),
+      GestureDetector(
+        onTap: onRemove,
+        child: Container(
+          width: 16, height: 16,
+          decoration: BoxDecoration(
+            color: AppColors.buttonBlue.withOpacity(0.15),
+            shape: BoxShape.circle,
+          ),
+          child: const Icon(Icons.close_rounded, size: 10, color: AppColors.buttonBlue),
+        ),
+      ),
     ]),
   );
 }
@@ -406,11 +434,20 @@ class _EmptyState extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Center(
     child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-      const Text('🔍', style: TextStyle(fontSize: 60)),
+      Container(
+        width: 72, height: 72,
+        decoration: BoxDecoration(
+          color: AppColors.primaryPink.withOpacity(0.08),
+          shape: BoxShape.circle,
+        ),
+        child: const Icon(Icons.search_off_rounded, size: 36, color: AppColors.primaryPink),
+      ),
       const SizedBox(height: 16),
-      const Text('Aucune nounou trouvée', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: AppColors.textDark)),
+      const Text('Aucune nounou trouvée',
+          style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: AppColors.textDark)),
       const SizedBox(height: 8),
-      const Text('Modifiez vos filtres pour voir plus de résultats', style: TextStyle(fontSize: 14, color: AppColors.textGrey), textAlign: TextAlign.center),
+      const Text('Modifiez vos filtres pour voir plus de résultats',
+          style: TextStyle(fontSize: 14, color: AppColors.textGrey), textAlign: TextAlign.center),
     ]),
   );
 }
@@ -456,9 +493,9 @@ class _NounouCard extends StatelessWidget {
               child: photoBase64 != null
                   ? Image.memory(base64Decode(photoBase64), fit: BoxFit.cover)
                   : Container(
-                      color: AppColors.primaryPink.withOpacity(0.1),
-                      child: Center(child: Text(_initiales,
-                          style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: AppColors.primaryPink)))),
+                  color: AppColors.primaryPink.withOpacity(0.1),
+                  child: Center(child: Text(_initiales,
+                      style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: AppColors.primaryPink)))),
             ),
           ),
           const SizedBox(width: 14),

@@ -4,140 +4,181 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'babysitter_edit_profile_screen.dart';
 
 // ─────────────────────────────────────────────────────────────
-// SCREEN — Shows the babysitter's public profile
+// SCREEN — Shows a babysitter's public profile.
+//
+// Two modes:
+//  • Own profile  → called with no args (from BabysitterHomeScreen).
+//                   Streams live data for the logged-in user.
+//  • Other nounou → called with nounouData (from SearchNounousScreen).
+//                   Uses the pre-fetched map + streams reviews by uid.
 // ─────────────────────────────────────────────────────────────
 class NounouProfileScreen extends StatelessWidget {
-  const NounouProfileScreen({super.key});
+  /// Pre-fetched data map from search results (includes a 'uid' key).
+  /// When null the screen shows the current user's own profile.
+  final Map<String, dynamic>? nounouData;
+
+  const NounouProfileScreen({super.key, this.nounouData});
 
   static const _pink = Color(0xFFFF6B8A);
 
-  // ── Firebase shortcuts ─────────────────────────────────────
-  static final _uid = FirebaseAuth.instance.currentUser!.uid;
-
-  static final _profileRef = FirebaseFirestore.instance
-      .collection('babysitters')
-      .doc(_uid);
-
-  static final _reviewsRef = _profileRef
-      .collection('reviews')
-      .orderBy('createdAt', descending: true)
-      .limit(5);
-
   @override
   Widget build(BuildContext context) {
-    return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-      stream: _profileRef.snapshots(),
-      builder: (context, snap) {
+    // ── Viewing another nounou's profile (parent side) ──────
+    if (nounouData != null) {
+      return _buildStaticProfile(context, nounouData!);
+    }
 
-        // Show loader while waiting for first data
+    // ── Viewing own profile (nounou side) ───────────────────
+    final uid        = FirebaseAuth.instance.currentUser!.uid;
+    final profileRef = FirebaseFirestore.instance
+        .collection('babysitters')
+        .doc(uid);
+
+    return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+      stream: profileRef.snapshots(),
+      builder: (context, snap) {
         if (snap.connectionState == ConnectionState.waiting) {
           return const Scaffold(
               body: Center(child: CircularProgressIndicator()));
         }
 
-        // Read profile fields with safe fallbacks
-        final d           = snap.data?.data() ?? {};
-        final fullName    = d['fullName']      ?? FirebaseAuth.instance.currentUser?.displayName ?? 'Nounou';
-        final photoUrl    = d['photoUrl']      ?? FirebaseAuth.instance.currentUser?.photoURL    ?? '';
-        final description = d['description']  ?? 'Aucune description.';
-        final experience  = d['experience']   ?? '-';
-        final rating      = (d['averageRating'] ?? 0.0).toDouble();
-        final reviewCount = d['reviewCount']  ?? 0;
-        final location    = d['location']     ?? '';
-        final skills      = List<String>.from(d['skills'] ?? []);
-        final verified    = d['verified']     ?? false;
-
-        return Scaffold(
-          backgroundColor: const Color(0xFFFFF8F9),
-          body: CustomScrollView(
-            slivers: [
-
-              // ── Collapsible header with photo ──────────────
-              _ProfileAppBar(
-                fullName:    fullName,
-                photoUrl:    photoUrl,
-                location:    location,
-                description: description,
-                experience:  experience,
-              ),
-
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: const EdgeInsets.all(20),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-
-                      // ── 3 stat chips ───────────────────────
-                      _StatsRow(
-                          experience: experience,
-                          reviewCount: reviewCount,
-                          rating: rating),
-                      const SizedBox(height: 20),
-
-                      // ── Verified badge (conditional) ───────
-                      if (verified) ...[
-                        _VerifiedCard(),
-                        const SizedBox(height: 16),
-                      ],
-
-                      // ── About / Experience / Skills ────────
-                      _InfoCard(
-                        icon: Icons.info_outline_rounded,
-                        title: 'À propos de moi',
-                        child: Text(description,
-                            style: TextStyle(
-                                fontSize: 14,
-                                color: Colors.grey[700],
-                                height: 1.6)),
-                      ),
-                      const SizedBox(height: 16),
-
-                      _InfoCard(
-                        icon: Icons.work_outline_rounded,
-                        title: 'Expérience',
-                        child: Chip(
-                          avatar: Icon(Icons.work_rounded, color: _pink, size: 16),
-                          label: Text("$experience d'expérience"),
-                          backgroundColor: _pink.withOpacity(0.1),
-                          labelStyle: TextStyle(
-                              color: _pink, fontWeight: FontWeight.w600),
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-
-                      _InfoCard(
-                        icon: Icons.star_outline_rounded,
-                        title: 'Compétences',
-                        child: skills.isEmpty
-                            ? Text('Aucune compétence renseignée.',
-                                style: TextStyle(
-                                    color: Colors.grey[500], fontSize: 13))
-                            : Wrap(
-                                spacing: 8,
-                                runSpacing: 8,
-                                children: skills
-                                    .map((s) => _SkillChip(label: s))
-                                    .toList(),
-                              ),
-                      ),
-                      const SizedBox(height: 16),
-
-                      // ── Reviews from Firestore ─────────────
-                      _InfoCard(
-                        icon: Icons.reviews_outlined,
-                        title: 'Avis des parents',
-                        child: _ReviewsList(stream: _reviewsRef.snapshots()),
-                      ),
-                      const SizedBox(height: 30),
-                    ],
-                  ),
-                ),
-              ),
-            ],
-          ),
+        final d = snap.data?.data() ?? {};
+        return _buildProfile(
+          context: context,
+          d: d,
+          uid: uid,
+          isOwnProfile: true,
         );
       },
+    );
+  }
+
+  // ── Static build for another nounou (no stream needed for main data) ──
+  Widget _buildStaticProfile(
+      BuildContext context, Map<String, dynamic> d) {
+    final uid = d['uid'] as String? ?? '';
+    return _buildProfile(
+      context: context,
+      d: d,
+      uid: uid,
+      isOwnProfile: false,
+    );
+  }
+
+  // ── Shared profile body ────────────────────────────────────
+  Widget _buildProfile({
+    required BuildContext context,
+    required Map<String, dynamic> d,
+    required String uid,
+    required bool isOwnProfile,
+  }) {
+    final fullName    = d['fullName']      as String?  ?? FirebaseAuth.instance.currentUser?.displayName ?? 'Nounou';
+    final photoUrl    = d['photoUrl']      as String?  ?? FirebaseAuth.instance.currentUser?.photoURL    ?? '';
+    final description = d['description']  as String?  ?? 'Aucune description.';
+    final experience  = d['experience']   as String?  ?? '-';
+    final rating      = ((d['averageRating'] ?? 0.0) as num).toDouble();
+    final reviewCount = (d['reviewCount']  ?? 0) as int;
+    final location    = d['location']     as String?  ?? '';
+    final skills      = List<String>.from(d['skills'] ?? []);
+    final verified    = d['verified']     as bool?    ?? false;
+
+    final reviewsRef = FirebaseFirestore.instance
+        .collection('babysitters')
+        .doc(uid)
+        .collection('reviews')
+        .orderBy('createdAt', descending: true)
+        .limit(5);
+
+    return Scaffold(
+      backgroundColor: const Color(0xFFFFF8F9),
+      body: CustomScrollView(
+        slivers: [
+
+          // ── Collapsible header with photo ──────────────────
+          _ProfileAppBar(
+            fullName:     fullName,
+            photoUrl:     photoUrl,
+            location:     location,
+            description:  description,
+            experience:   experience,
+            isOwnProfile: isOwnProfile,
+          ),
+
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+
+                  // ── 3 stat chips ─────────────────────────
+                  _StatsRow(
+                      experience: experience,
+                      reviewCount: reviewCount,
+                      rating: rating),
+                  const SizedBox(height: 20),
+
+                  // ── Verified badge (conditional) ──────────
+                  if (verified) ...[
+                    _VerifiedCard(),
+                    const SizedBox(height: 16),
+                  ],
+
+                  // ── About / Experience / Skills ───────────
+                  _InfoCard(
+                    icon: Icons.info_outline_rounded,
+                    title: 'À propos de moi',
+                    child: Text(description,
+                        style: TextStyle(
+                            fontSize: 14,
+                            color: Colors.grey[700],
+                            height: 1.6)),
+                  ),
+                  const SizedBox(height: 16),
+
+                  _InfoCard(
+                    icon: Icons.work_outline_rounded,
+                    title: 'Expérience',
+                    child: Chip(
+                      avatar: Icon(Icons.work_rounded, color: _pink, size: 16),
+                      label: Text("$experience d'expérience"),
+                      backgroundColor: _pink.withOpacity(0.1),
+                      labelStyle: TextStyle(
+                          color: _pink, fontWeight: FontWeight.w600),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+
+                  _InfoCard(
+                    icon: Icons.star_outline_rounded,
+                    title: 'Compétences',
+                    child: skills.isEmpty
+                        ? Text('Aucune compétence renseignée.',
+                            style: TextStyle(
+                                color: Colors.grey[500], fontSize: 13))
+                        : Wrap(
+                            spacing: 8,
+                            runSpacing: 8,
+                            children: skills
+                                .map((s) => _SkillChip(label: s))
+                                .toList(),
+                          ),
+                  ),
+                  const SizedBox(height: 16),
+
+                  // ── Reviews from Firestore ─────────────────
+                  _InfoCard(
+                    icon: Icons.reviews_outlined,
+                    title: 'Avis des parents',
+                    child: _ReviewsList(stream: reviewsRef.snapshots()),
+                  ),
+                  const SizedBox(height: 30),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -149,12 +190,14 @@ class NounouProfileScreen extends StatelessWidget {
 // Collapsible app bar with profile photo, name and location
 class _ProfileAppBar extends StatelessWidget {
   final String fullName, photoUrl, location, description, experience;
+  final bool isOwnProfile;
   const _ProfileAppBar({
     required this.fullName,
     required this.photoUrl,
     required this.location,
     required this.description,
     required this.experience,
+    required this.isOwnProfile,
   });
 
   static const _pink = Color(0xFFFF6B8A);
@@ -170,19 +213,20 @@ class _ProfileAppBar extends StatelessWidget {
         onPressed: () => Navigator.pop(context),
       ),
       actions: [
-        IconButton(
-          icon: const Icon(Icons.edit_rounded, color: Colors.white),
-          onPressed: () => Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (_) => BabysitterEditProfileScreen(
-                name: fullName,
-                description: description,
-                experience: experience,
+        if (isOwnProfile)
+          IconButton(
+            icon: const Icon(Icons.edit_rounded, color: Colors.white),
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => BabysitterEditProfileScreen(
+                  name: fullName,
+                  description: description,
+                  experience: experience,
+                ),
               ),
             ),
           ),
-        ),
       ],
       flexibleSpace: FlexibleSpaceBar(
         background: Container(

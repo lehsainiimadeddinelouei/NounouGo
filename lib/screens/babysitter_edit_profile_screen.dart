@@ -195,12 +195,12 @@ class _BabysitterEditProfileScreenState
             onPressed: _saving ? null : _save,
             child: _saving
                 ? const SizedBox(
-                    width: 18, height: 18,
-                    child: CircularProgressIndicator(
-                        color: Colors.white, strokeWidth: 2))
+                width: 18, height: 18,
+                child: CircularProgressIndicator(
+                    color: Colors.white, strokeWidth: 2))
                 : const Text('Enregistrer',
-                    style: TextStyle(
-                        color: Colors.white, fontWeight: FontWeight.w600)),
+                style: TextStyle(
+                    color: Colors.white, fontWeight: FontWeight.w600)),
           ),
         ],
       ),
@@ -277,12 +277,12 @@ class _BabysitterEditProfileScreenState
                     ),
                     child: _saving
                         ? const CircularProgressIndicator(
-                            color: Colors.white, strokeWidth: 2)
+                        color: Colors.white, strokeWidth: 2)
                         : const Text('Enregistrer les modifications',
-                            style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 16,
-                                fontWeight: FontWeight.w600)),
+                        style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600)),
                   ),
                 ),
                 const SizedBox(height: 30),
@@ -388,24 +388,24 @@ class _PhotoSection extends StatelessWidget {
               backgroundColor: Colors.white,
               child: uploading
                   ? const CircularProgressIndicator(
-                      color: _pink, strokeWidth: 2)
+                  color: _pink, strokeWidth: 2)
                   : CircleAvatar(
-                      radius: 50,
-                      backgroundColor: _pink.withOpacity(0.2),
-                      backgroundImage:
-                          photoUrl.isNotEmpty ? NetworkImage(photoUrl) : null,
-                      child: photoUrl.isEmpty
-                          ? Text(
-                              name.isNotEmpty
-                                  ? name[0].toUpperCase()
-                                  : '?',
-                              style: const TextStyle(
-                                  fontSize: 32,
-                                  fontWeight: FontWeight.bold,
-                                  color: Colors.white),
-                            )
-                          : null,
-                    ),
+                radius: 50,
+                backgroundColor: _pink.withOpacity(0.2),
+                backgroundImage:
+                photoUrl.isNotEmpty ? NetworkImage(photoUrl) : null,
+                child: photoUrl.isEmpty
+                    ? Text(
+                  name.isNotEmpty
+                      ? name[0].toUpperCase()
+                      : '?',
+                  style: const TextStyle(
+                      fontSize: 32,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white),
+                )
+                    : null,
+              ),
             ),
             // Camera icon badge
             CircleAvatar(
@@ -509,7 +509,7 @@ class _Field extends StatelessWidget {
         filled: true,
         fillColor: Colors.grey[50],
         contentPadding:
-            const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+        const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
         labelStyle: TextStyle(color: Colors.grey[600], fontSize: 13),
       ),
     );

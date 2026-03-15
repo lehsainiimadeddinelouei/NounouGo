@@ -16,32 +16,33 @@ class BabysitterHomeScreen extends StatefulWidget {
 
 class _BabysitterHomeScreenState extends State<BabysitterHomeScreen> {
 
-  // ── Constants ──────────────────────────────────────────────
+  // ── Theme colors ───────────────────────────────────────────
   static const _pink   = Color(0xFFFF6B8A);
   static const _bg     = Color(0xFFFFF8F9);
   static const _teal   = Color(0xFF43C59E);
   static const _purple = Color(0xFF7C83FD);
   static const _amber  = Color(0xFFFFB347);
 
-  // ── Firebase shortcuts ─────────────────────────────────────
+  // ── Firebase references ────────────────────────────────────
   final _user = FirebaseAuth.instance.currentUser!;
 
   late final _profileRef = FirebaseFirestore.instance
       .collection('babysitters')
       .doc(_user.uid);
 
+  // Last 5 activities ordered by creation date
   late final _activitiesRef = _profileRef
       .collection('activities')
       .orderBy('createdAt', descending: true)
       .limit(5);
 
-  // ── Helpers ────────────────────────────────────────────────
+  // ── Helper methods ─────────────────────────────────────────
 
-  // Returns first name only (e.g. "Amina Bouhired" → "Amina")
+  // Returns first name only — e.g. "Amina Bouhired" → "Amina"
   String _firstName(String? full) =>
       (full ?? 'Nounou').trim().split(' ').first;
 
-  // Human-readable time ago string
+  // Human-readable relative time — e.g. "Il y a 5min"
   String _timeAgo(Timestamp ts) {
     final diff = DateTime.now().difference(ts.toDate());
     if (diff.inMinutes < 60) return 'Il y a ${diff.inMinutes}min';
@@ -50,37 +51,70 @@ class _BabysitterHomeScreenState extends State<BabysitterHomeScreen> {
     return 'Il y a ${diff.inDays} jours';
   }
 
-  // Returns icon + color based on activity type string
+  // Maps an activity type string to an icon + color pair
   ({IconData icon, Color color}) _activityStyle(String type) => switch (type) {
-    'request' => (icon: Icons.assignment_rounded,   color: _amber),
-    'message' => (icon: Icons.chat_bubble_rounded,  color: _teal),
-    'review'  => (icon: Icons.star_rounded,         color: _purple),
-    _         => (icon: Icons.notifications_rounded, color: _pink),
+    'request' => (icon: Icons.assignment_rounded,    color: _amber),
+    'message' => (icon: Icons.chat_bubble_rounded,   color: _teal),
+    'review'  => (icon: Icons.star_rounded,          color: _purple),
+    _         => (icon: Icons.notifications_rounded,  color: _pink),
   };
 
   // ── Navigation helpers ─────────────────────────────────────
   void _goTo(Widget screen) =>
       Navigator.push(context, MaterialPageRoute(builder: (_) => screen));
 
+  // FIX 1: Dedicated method for Messages screen.
+  // Replace the SnackBar with _goTo(MessagesScreen()) once that screen exists.
+  void _goToMessages() {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Bientôt disponible : écran Messages'),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
+  // FIX 1: Dedicated method for Requests screen — placeholder for now.
+  void _goToRequests() {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Bientôt disponible : écran Demandes'),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
+  // FIX 2: Dedicated method for Notifications screen — placeholder for now.
+  void _goToNotifications() {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Bientôt disponible : écran Notifications'),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
   // ──────────────────────────────────────────────────────────
   // BUILD
   // ──────────────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
-    // Listen to the profile document for name, photo, and status
+    // Real-time listener on the babysitter profile document
     return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
       stream: _profileRef.snapshots(),
       builder: (context, snap) {
         final data        = snap.data?.data() ?? {};
-        final fullName    = data['fullName']  ?? _user.displayName ?? '';
-        final photoUrl    = data['photoUrl']  ?? _user.photoURL    ?? '';
+        final fullName    = data['fullName']    ?? _user.displayName ?? '';
+        final photoUrl    = data['photoUrl']    ?? _user.photoURL    ?? '';
         final isAvailable = data['isAvailable'] ?? false;
 
         return Scaffold(
           backgroundColor: _bg,
+          // FIX 1: onMessages is now wired — was missing before
           bottomNavigationBar: _BottomNav(
-            onProfile: () => _goTo(const NounouProfileScreen()),
-            onSetup:   () => _goTo(const BabysitterSetupScreen()),
+            onProfile:  () => _goTo(const NounouProfileScreen()),
+            onSetup:    () => _goTo(const BabysitterSetupScreen()),
+            onMessages: _goToMessages,
           ),
           body: SafeArea(
             child: SingleChildScrollView(
@@ -89,11 +123,13 @@ class _BabysitterHomeScreenState extends State<BabysitterHomeScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
 
-                  // ── Header: avatar + greeting + bell ──────
+                  // ── Top row: avatar + greeting + bell ─────
                   _Header(
                     fullName:  fullName,
                     photoUrl:  photoUrl,
                     firstName: _firstName(fullName),
+                    // FIX 2: Bell now opens a screen instead of doing nothing
+                    onNotificationTap: _goToNotifications,
                     unreadStream: _profileRef
                         .collection('activities')
                         .where('read', isEqualTo: false)
@@ -102,23 +138,26 @@ class _BabysitterHomeScreenState extends State<BabysitterHomeScreen> {
                   ),
                   const SizedBox(height: 24),
 
-                  // ── Hero card: availability status ────────
+                  // ── Availability hero card ─────────────────
                   _HeroCard(
                     isAvailable: isAvailable,
                     onManage: () => _goTo(const BabysitterSetupScreen()),
                   ),
                   const SizedBox(height: 24),
 
-                  // ── Quick-access grid ─────────────────────
+                  // ── Quick-access 2×2 grid ──────────────────
                   _SectionLabel(text: 'Accès rapide'),
                   const SizedBox(height: 16),
+                  // FIX 1: All four grid buttons now have real callbacks
                   _QuickGrid(
-                    onProfile:       () => _goTo(const NounouProfileScreen()),
-                    onAvailabilities:() => _goTo(const BabysitterSetupScreen()),
+                    onProfile:        () => _goTo(const NounouProfileScreen()),
+                    onAvailabilities: () => _goTo(const BabysitterSetupScreen()),
+                    onMessages:       _goToMessages,
+                    onRequests:       _goToRequests,
                   ),
                   const SizedBox(height: 24),
 
-                  // ── Recent activity from Firestore ────────
+                  // ── Recent activity feed from Firestore ────
                   _SectionLabel(text: 'Activité récente'),
                   const SizedBox(height: 12),
                   _ActivityList(
@@ -138,9 +177,10 @@ class _BabysitterHomeScreenState extends State<BabysitterHomeScreen> {
 }
 
 // ─────────────────────────────────────────────────────────────
-// SMALL WIDGETS
+// SUB-WIDGETS
 // ─────────────────────────────────────────────────────────────
 
+// Simple bold section title
 class _SectionLabel extends StatelessWidget {
   final String text;
   const _SectionLabel({required this.text});
@@ -156,18 +196,20 @@ class _SectionLabel extends StatelessWidget {
   );
 }
 
-// Top row: avatar + greeting + notification bell
+// Top row: avatar + greeting text + notification bell with unread badge
 class _Header extends StatelessWidget {
   final String fullName;
   final String photoUrl;
   final String firstName;
   final Stream<int> unreadStream;
+  final VoidCallback onNotificationTap; // FIX 2: added callback
 
   const _Header({
     required this.fullName,
     required this.photoUrl,
     required this.firstName,
     required this.unreadStream,
+    required this.onNotificationTap,
   });
 
   static const _pink = Color(0xFFFF6B8A);
@@ -175,22 +217,22 @@ class _Header extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Row(children: [
-      // Profile avatar (photo or initials fallback)
+      // Profile avatar — shows photo or first-letter initials as fallback
       CircleAvatar(
         radius: 28,
         backgroundColor: _pink.withOpacity(0.2),
         backgroundImage: photoUrl.isNotEmpty ? NetworkImage(photoUrl) : null,
         child: photoUrl.isEmpty
             ? Text(
-                fullName.isNotEmpty ? fullName[0].toUpperCase() : '?',
-                style: const TextStyle(
-                    fontSize: 22, fontWeight: FontWeight.bold, color: _pink),
-              )
+          fullName.isNotEmpty ? fullName[0].toUpperCase() : '?',
+          style: const TextStyle(
+              fontSize: 22, fontWeight: FontWeight.bold, color: _pink),
+        )
             : null,
       ),
       const SizedBox(width: 14),
 
-      // Greeting text
+      // Greeting column
       Expanded(
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text('Bonjour, $firstName 👋',
@@ -204,14 +246,15 @@ class _Header extends StatelessWidget {
         ]),
       ),
 
-      // Notification bell with unread dot
+      // FIX 2: Notification bell now calls onNotificationTap — was () {} before
       StreamBuilder<int>(
         stream: unreadStream,
         builder: (_, snap) => Stack(children: [
           IconButton(
             icon: Icon(Icons.notifications_outlined, color: Colors.grey[700]),
-            onPressed: () {},
+            onPressed: onNotificationTap,
           ),
+          // Small red dot shown when there are unread notifications
           if ((snap.data ?? 0) > 0)
             Positioned(
               right: 10, top: 10,
@@ -227,7 +270,7 @@ class _Header extends StatelessWidget {
   }
 }
 
-// Pink gradient card showing current availability status
+// Pink card showing current availability + manage button
 class _HeroCard extends StatelessWidget {
   final bool isAvailable;
   final VoidCallback onManage;
@@ -264,7 +307,7 @@ class _HeroCard extends StatelessWidget {
                 shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(30)),
                 padding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
               ),
               child: const Text('Gérer disponibilités',
                   style: TextStyle(fontSize: 12)),
@@ -277,19 +320,28 @@ class _HeroCard extends StatelessWidget {
   }
 }
 
-// 2×2 grid of navigation shortcut cards
+// FIX 1: Added onMessages and onRequests — both were completely missing before
 class _QuickGrid extends StatelessWidget {
   final VoidCallback onProfile;
   final VoidCallback onAvailabilities;
-  const _QuickGrid({required this.onProfile, required this.onAvailabilities});
+  final VoidCallback onMessages; // new
+  final VoidCallback onRequests; // new
+
+  const _QuickGrid({
+    required this.onProfile,
+    required this.onAvailabilities,
+    required this.onMessages,
+    required this.onRequests,
+  });
 
   @override
   Widget build(BuildContext context) {
+    // All four cards now have real callbacks instead of empty () {}
     final items = [
-      _QuickItem(icon: Icons.person_rounded,       label: 'Mon Profil',      color: const Color(0xFFFF6B8A), onTap: onProfile),
-      _QuickItem(icon: Icons.calendar_month_rounded,label: 'Disponibilités', color: const Color(0xFF7C83FD), onTap: onAvailabilities),
-      _QuickItem(icon: Icons.chat_bubble_rounded,  label: 'Messages',        color: const Color(0xFF43C59E), onTap: () {}),
-      _QuickItem(icon: Icons.assignment_rounded,   label: 'Demandes',        color: const Color(0xFFFFB347), onTap: () {}),
+      _QuickItem(icon: Icons.person_rounded,         label: 'Mon Profil',     color: const Color(0xFFFF6B8A), onTap: onProfile),
+      _QuickItem(icon: Icons.calendar_month_rounded, label: 'Disponibilités', color: const Color(0xFF7C83FD), onTap: onAvailabilities),
+      _QuickItem(icon: Icons.chat_bubble_rounded,    label: 'Messages',       color: const Color(0xFF43C59E), onTap: onMessages),
+      _QuickItem(icon: Icons.assignment_rounded,     label: 'Demandes',       color: const Color(0xFFFFB347), onTap: onRequests),
     ];
 
     return GridView.count(
@@ -335,95 +387,107 @@ class _QuickGrid extends StatelessWidget {
   }
 }
 
-// Data class for a quick-access card
+// Simple data class for one quick-access card
 class _QuickItem {
   final IconData icon;
   final String label;
   final Color color;
   final VoidCallback onTap;
-  const _QuickItem({required this.icon, required this.label,
-      required this.color, required this.onTap});
+  const _QuickItem({
+    required this.icon,
+    required this.label,
+    required this.color,
+    required this.onTap,
+  });
 }
 
-// Streams recent activities from Firestore and renders them
+// Streams recent activity documents from Firestore and renders one card per item
 class _ActivityList extends StatelessWidget {
   final Stream<QuerySnapshot<Map<String, dynamic>>> stream;
   final ({IconData icon, Color color}) Function(String) activityStyle;
   final String Function(Timestamp) timeAgo;
 
   const _ActivityList({
-    required this.stream,
-    required this.activityStyle,
-    required this.timeAgo,
+  required this.stream,
+  required this.activityStyle,
+  required this.timeAgo,
   });
 
   @override
   Widget build(BuildContext context) {
-    return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-      stream: stream,
-      builder: (_, snap) {
-        if (snap.connectionState == ConnectionState.waiting) {
-          return const Center(
-              child: CircularProgressIndicator(strokeWidth: 2));
-        }
+  return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+  stream: stream,
+  builder: (_, snap) {
+  if (snap.connectionState == ConnectionState.waiting) {
+  return const Center(
+  child: CircularProgressIndicator(strokeWidth: 2));
+  }
 
-        final docs = snap.data?.docs ?? [];
-        if (docs.isEmpty) {
-          return Center(
-            child: Text('Aucune activité récente.',
-                style: TextStyle(color: Colors.grey[500], fontSize: 14)),
-          );
-        }
+  final docs = snap.data?.docs ?? [];
+  if (docs.isEmpty) {
+  return Center(
+  child: Text('Aucune activité récente.',
+  style: TextStyle(color: Colors.grey[500], fontSize: 14)),
+  );
+  }
 
-        return Column(
-          children: docs.map((doc) {
-            final d = doc.data();
-            final style = activityStyle(d['type'] ?? '');
-            final ts = d['createdAt'] as Timestamp?;
-            final sub = [
-              if (d['senderName'] != null) d['senderName'] as String,
-              if (ts != null) timeAgo(ts),
-            ].join(' · ');
+  return Column(
+  children: docs.map((doc) {
+  final d     = doc.data();
+  final style = activityStyle(d['type'] ?? '');
+  final ts    = d['createdAt'] as Timestamp?;
 
-            return Card(
-              elevation: 0,
-              margin: const EdgeInsets.only(bottom: 10),
-              color: Colors.white,
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(14)),
-              child: ListTile(
-                contentPadding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-                leading: Container(
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    color: style.color.withOpacity(0.15),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Icon(style.icon, color: style.color, size: 22),
-                ),
-                title: Text(d['title'] ?? 'Notification',
-                    style: const TextStyle(
-                        fontWeight: FontWeight.w600, fontSize: 14)),
-                subtitle: Text(sub,
-                    style: TextStyle(
-                        fontSize: 12, color: Colors.grey[500])),
-                trailing:
-                    Icon(Icons.chevron_right, color: Colors.grey[400]),
-              ),
-            );
-          }).toList(),
-        );
-      },
-    );
+  // Subtitle: "senderName · time ago"
+  final sub = [
+  if (d['senderName'] != null) d['senderName'] as String,
+  if (ts != null) timeAgo(ts),
+  ].join(' · ');
+
+  return Card(
+  elevation: 0,
+  margin: const EdgeInsets.only(bottom: 10),
+  color: Colors.white,
+  shape: RoundedRectangleBorder(
+  borderRadius: BorderRadius.circular(14)),
+  child: ListTile(
+  contentPadding:
+  const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+  leading: Container(
+  padding: const EdgeInsets.all(10),
+  decoration: BoxDecoration(
+  color: style.color.withOpacity(0.15),
+  borderRadius: BorderRadius.circular(12),
+  ),
+  child: Icon(style.icon, color: style.color, size: 22),
+  ),
+  title: Text(d['title'] ?? 'Notification',
+  style: const TextStyle(
+  fontWeight: FontWeight.w600, fontSize: 14)),
+  subtitle: Text(sub,
+  style: TextStyle(
+  fontSize: 12, color: Colors.grey[500])),
+  trailing:
+  Icon(Icons.chevron_right, color: Colors.grey[400]),
+  ),
+  );
+  }).toList(),
+  );
+  },
+  );
   }
 }
 
-// Fixed bottom navigation bar
+// FIX 1: Added onMessages parameter + handled index 3 in onTap (was missing)
 class _BottomNav extends StatelessWidget {
   final VoidCallback onProfile;
   final VoidCallback onSetup;
-  const _BottomNav({required this.onProfile, required this.onSetup});
+  final VoidCallback onMessages; // new
+
+  const _BottomNav({
+    required this.onProfile,
+    required this.onSetup,
+    required this.onMessages,
+  });
 
   static const _pink = Color(0xFFFF6B8A);
 
@@ -434,6 +498,7 @@ class _BottomNav extends StatelessWidget {
       onTap: (i) {
         if (i == 1) onProfile();
         if (i == 2) onSetup();
+        if (i == 3) onMessages(); // FIX 1: index 3 was never handled before
       },
       type: BottomNavigationBarType.fixed,
       selectedItemColor: _pink,
