@@ -1,24 +1,14 @@
-import 'dart:io';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_storage/firebase_storage.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:file_picker/file_picker.dart';
+import '../theme/app_theme.dart';
 
-// ─────────────────────────────────────────────────────────────
-// SCREEN — Edit babysitter profile fields + photo
-// ─────────────────────────────────────────────────────────────
 class BabysitterEditProfileScreen extends StatefulWidget {
-  final String name;
-  final String description;
-  final String experience;
-
-  const BabysitterEditProfileScreen({
-    super.key,
-    required this.name,
-    required this.description,
-    required this.experience,
-  });
+  final Map<String, dynamic> data;
+  const BabysitterEditProfileScreen({super.key, required this.data});
 
   @override
   State<BabysitterEditProfileScreen> createState() =>
@@ -27,266 +17,372 @@ class BabysitterEditProfileScreen extends StatefulWidget {
 
 class _BabysitterEditProfileScreenState
     extends State<BabysitterEditProfileScreen> {
+  final _db  = FirebaseFirestore.instance;
+  final _uid = FirebaseAuth.instance.currentUser!.uid;
 
-  // ── Constants ──────────────────────────────────────────────
-  static const _pink = Color(0xFFFF6B8A);
-  static const _bg   = Color(0xFFFFF8F9);
+  late TextEditingController _bioController;
+  late TextEditingController _diplomeController;
+  late TextEditingController _competenceController;
 
-  // ── Controllers (one per text field) ──────────────────────
-  late final _nameCtrl     = TextEditingController(text: widget.name);
-  late final _descCtrl     = TextEditingController(text: widget.description);
-  late final _expCtrl      = TextEditingController(text: widget.experience);
-  final      _locationCtrl = TextEditingController();
-  final      _phoneCtrl    = TextEditingController();
+  late List<String> _diplomes;
+  late List<String> _competences;
+  late List<String> _ageGroups;
 
-  final _formKey = GlobalKey<FormState>();
+  // Disponibilités : Map jour → Set<périodes sélectionnées>
+  // Structure stockée en Firestore sous forme Map<String, List<String>>
+  late Map<String, Set<String>> _disponibilites;
 
-  // ── Firebase shortcuts ─────────────────────────────────────
-  final _auth    = FirebaseAuth.instance;
-  final _storage = FirebaseStorage.instance;
-  final _picker  = ImagePicker();
+  String? _photoBase64;
+  bool _isSaving = false;
 
-  late final _profileRef = FirebaseFirestore.instance
-      .collection('babysitters')
-      .doc(_auth.currentUser!.uid);
+  // Documents PDF
+  String? _diplomePdfBase64;
+  String? _diplomePdfName;
+  String? _cvBase64;
+  String? _cvName;
+  String? _cniBase64;
+  String? _cniName;
+  bool _loadingDoc = false;
 
-  // ── Local state ────────────────────────────────────────────
-  String       _photoUrl      = '';
-  List<String> _skills        = [];
-  bool         _saving        = false;
-  bool         _uploadingPhoto= false;
+  static const List<String> _jours = [
+    'Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi', 'Dimanche',
+  ];
+  static const List<String> _periodes = [
+    'Matin', 'Midi', 'Après-midi', 'Soir', 'Nuit',
+  ];
+  final List<String> _ageGroupsList = [
+    '0-1 an', '1-3 ans', '3-6 ans', '6-10 ans', '10+ ans',
+  ];
 
-  // ──────────────────────────────────────────────────────────
-  // LIFECYCLE
-  // ──────────────────────────────────────────────────────────
   @override
   void initState() {
     super.initState();
-    _loadExtraFields();
+    final d = widget.data;
+    _bioController        = TextEditingController(text: d['bio'] ?? '');
+    _diplomeController    = TextEditingController();
+    _competenceController = TextEditingController();
+    _diplomes       = List<String>.from(d['diplomes']      ?? []);
+    _competences    = List<String>.from(d['competences']   ?? []);
+    _ageGroups      = List<String>.from(d['ageGroups']     ?? []);
+
+    // Load structured disponibilites: Firestore stores Map<String, List<String>>
+    // Fallback: if old flat List<String> is stored, treat each entry as a day with no periods
+    final rawDispos = d['disponibilites'];
+    _disponibilites = {};
+    if (rawDispos is Map) {
+      rawDispos.forEach((jour, periodes) {
+        if (periodes is List) {
+          _disponibilites[jour.toString()] =
+          Set<String>.from(periodes.map((p) => p.toString()));
+        }
+      });
+    }
+    // Pre-populate all days so UI always shows them
+    for (final jour in _jours) {
+      _disponibilites.putIfAbsent(jour, () => <String>{});
+    }
+    _photoBase64      = d['photoBase64']      as String?;
+    _diplomePdfBase64 = d['diplomePdfBase64'] as String?;
+    _diplomePdfName   = d['diplomePdfName']   as String?;
+    _cvBase64         = d['cvBase64']         as String?;
+    _cvName           = d['cvName']           as String?;
+    _cniBase64        = d['cniBase64']        as String?;
+    _cniName          = d['cniName']          as String?;
   }
 
   @override
   void dispose() {
-    // Always dispose controllers to free memory
-    _nameCtrl.dispose();
-    _descCtrl.dispose();
-    _expCtrl.dispose();
-    _locationCtrl.dispose();
-    _phoneCtrl.dispose();
+    _bioController.dispose();
+    _diplomeController.dispose();
+    _competenceController.dispose();
     super.dispose();
   }
 
-  // ── Load location, phone, photo and skills from Firestore ─
-  Future<void> _loadExtraFields() async {
-    final doc = await _profileRef.get();
-    if (!mounted) return;
-    final d = doc.data() ?? {};
-    setState(() {
-      _locationCtrl.text = d['location'] ?? '';
-      _phoneCtrl.text    = d['phone']    ?? '';
-      _photoUrl          = d['photoUrl'] ?? '';
-      _skills            = List<String>.from(d['skills'] ?? []);
-    });
-  }
-
-  // ── Pick a photo, upload to Storage, save URL to Firestore ─
-  Future<void> _pickPhoto(ImageSource source) async {
-    Navigator.pop(context); // close the bottom sheet first
-    final file = await _picker.pickImage(
-        source: source, maxWidth: 600, imageQuality: 80);
-    if (file == null) return;
-
-    setState(() => _uploadingPhoto = true);
-    try {
-      final ref = _storage
-          .ref()
-          .child('profile_photos/${_auth.currentUser!.uid}.jpg');
-      await ref.putFile(File(file.path));
-      final url = await ref.getDownloadURL();
-
-      await _profileRef.update({'photoUrl': url});
-      await _auth.currentUser?.updatePhotoURL(url);
-
-      setState(() => _photoUrl = url);
-    } catch (e) {
-      _showSnack('Erreur lors du téléchargement: $e');
-    } finally {
-      if (mounted) setState(() => _uploadingPhoto = false);
+  // ── Pick photo ──────────────────────────────────────────────
+  Future<void> _pickPhoto() async {
+    final source = await _showImageSourceDialog();
+    if (source == null) return;
+    final picker = ImagePicker();
+    final img = await picker.pickImage(
+        source: source, imageQuality: 70, maxWidth: 300, maxHeight: 300);
+    if (img != null) {
+      final bytes = await img.readAsBytes();
+      setState(() => _photoBase64 = base64Encode(bytes));
     }
   }
 
-  // ── Delete profile photo ───────────────────────────────────
-  Future<void> _deletePhoto() async {
-    Navigator.pop(context);
-    setState(() => _uploadingPhoto = true);
-    try {
-      await _profileRef.update({'photoUrl': FieldValue.delete()});
-      await _auth.currentUser?.updatePhotoURL(null);
-      setState(() => _photoUrl = '');
-    } finally {
-      if (mounted) setState(() => _uploadingPhoto = false);
-    }
-  }
-
-  // ── Save all fields to Firestore ───────────────────────────
-  Future<void> _save() async {
-    if (!_formKey.currentState!.validate()) return;
-    setState(() => _saving = true);
-    try {
-      await _profileRef.set({
-        'fullName':    _nameCtrl.text.trim(),
-        'description': _descCtrl.text.trim(),
-        'experience':  _expCtrl.text.trim(),
-        'location':    _locationCtrl.text.trim(),
-        'phone':       _phoneCtrl.text.trim(),
-        'skills':      _skills,
-        'updatedAt':   FieldValue.serverTimestamp(),
-      }, SetOptions(merge: true));
-
-      // Keep Firebase Auth display name in sync
-      await _auth.currentUser?.updateDisplayName(_nameCtrl.text.trim());
-
-      if (mounted) {
-        _showSnack('Profil mis à jour avec succès!');
-        Navigator.pop(context, {
-          'name':        _nameCtrl.text.trim(),
-          'description': _descCtrl.text.trim(),
-          'experience':  _expCtrl.text.trim(),
-        });
-      }
-    } catch (e) {
-      _showSnack('Erreur: $e');
-    } finally {
-      if (mounted) setState(() => _saving = false);
-    }
-  }
-
-  // ── Small helper to show a SnackBar message ────────────────
-  void _showSnack(String msg) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(msg),
-        backgroundColor: _pink,
-        shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(10)),
-        behavior: SnackBarBehavior.floating,
+  Future<ImageSource?> _showImageSourceDialog() async {
+    return showModalBottomSheet<ImageSource>(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+          borderRadius:
+          BorderRadius.vertical(top: Radius.circular(24))),
+      builder: (_) => Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                  color: AppColors.inputBorder,
+                  borderRadius: BorderRadius.circular(2))),
+          const SizedBox(height: 20),
+          const Text('Choisir une photo',
+              style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w800,
+                  color: AppColors.textDark)),
+          const SizedBox(height: 20),
+          Row(children: [
+            Expanded(
+                child: _SourceOption(
+                  icon: Icons.camera_alt_rounded,
+                  label: 'Caméra',
+                  color: AppColors.buttonBlue,
+                  onTap: () =>
+                      Navigator.pop(context, ImageSource.camera),
+                )),
+            const SizedBox(width: 16),
+            Expanded(
+                child: _SourceOption(
+                  icon: Icons.photo_library_rounded,
+                  label: 'Galerie',
+                  color: AppColors.primaryPink,
+                  onTap: () =>
+                      Navigator.pop(context, ImageSource.gallery),
+                )),
+          ]),
+          const SizedBox(height: 16),
+        ]),
       ),
     );
   }
 
-  // ──────────────────────────────────────────────────────────
-  // BUILD
-  // ──────────────────────────────────────────────────────────
+  // ── Pick document ───────────────────────────────────────────
+  Future<void> _pickDoc(String type) async {
+    setState(() => _loadingDoc = true);
+    try {
+      final extensions =
+      type == 'cni' ? ['pdf', 'jpg', 'jpeg', 'png'] : ['pdf'];
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: extensions,
+        withData: true,
+      );
+      if (result != null && result.files.single.bytes != null) {
+        final b64  = base64Encode(result.files.single.bytes!);
+        final name = result.files.single.name;
+        setState(() {
+          if (type == 'diplome') {
+            _diplomePdfBase64 = b64;
+            _diplomePdfName   = name;
+          } else if (type == 'cv') {
+            _cvBase64 = b64;
+            _cvName   = name;
+          } else {
+            _cniBase64 = b64;
+            _cniName   = name;
+          }
+        });
+      }
+    } catch (_) {}
+    setState(() => _loadingDoc = false);
+  }
+
+  // ── Save ────────────────────────────────────────────────────
+  Future<void> _save() async {
+    setState(() => _isSaving = true);
+    try {
+      final doc      = await _db.collection('users').doc(_uid).get();
+      final existing = doc.data() ?? {};
+
+      final diploStatut = _diplomePdfBase64 != existing['diplomePdfBase64']
+          ? 'en_attente'
+          : (existing['diplomePdfStatut'] ?? 'non_soumis');
+      final cvStatut = _cvBase64 != existing['cvBase64']
+          ? 'en_attente'
+          : (existing['cvStatut'] ?? 'non_soumis');
+      final cniStatut = _cniBase64 != existing['cniBase64']
+          ? 'en_attente'
+          : (existing['cniStatut'] ?? 'non_soumis');
+
+      await _db.collection('users').doc(_uid).update({
+        'bio':            _bioController.text.trim(),
+        'diplomes':       _diplomes,
+        'competences':    _competences,
+        // Serialize Map<String, Set<String>> → Map<String, List<String>>
+        'disponibilites': _disponibilites.map(
+                (jour, periodes) => MapEntry(jour, periodes.toList())),
+        'ageGroups':      _ageGroups,
+        if (_photoBase64 != null)      'photoBase64':      _photoBase64,
+        if (_diplomePdfBase64 != null) 'diplomePdfBase64': _diplomePdfBase64,
+        if (_diplomePdfName   != null) 'diplomePdfName':   _diplomePdfName,
+        'diplomePdfStatut': diploStatut,
+        if (_cvBase64 != null) 'cvBase64': _cvBase64,
+        if (_cvName   != null) 'cvName':   _cvName,
+        'cvStatut':  cvStatut,
+        if (_cniBase64 != null) 'cniBase64': _cniBase64,
+        if (_cniName   != null) 'cniName':   _cniName,
+        'cniStatut': cniStatut,
+      });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('✅ Profil mis à jour !'),
+          backgroundColor: Colors.green,
+          behavior: SnackBarBehavior.floating,
+        ));
+        Navigator.pop(context, true);
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('Erreur : $e'),
+          backgroundColor: Colors.red,
+          behavior: SnackBarBehavior.floating,
+        ));
+      }
+    }
+    setState(() => _isSaving = false);
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: _bg,
-      appBar: AppBar(
-        backgroundColor: _pink,
-        elevation: 0,
-        title: const Text('Modifier le profil',
-            style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.white),
-          onPressed: () => Navigator.pop(context),
-        ),
-        actions: [
-          TextButton(
-            onPressed: _saving ? null : _save,
-            child: _saving
-                ? const SizedBox(
-                width: 18, height: 18,
-                child: CircularProgressIndicator(
-                    color: Colors.white, strokeWidth: 2))
-                : const Text('Enregistrer',
-                style: TextStyle(
-                    color: Colors.white, fontWeight: FontWeight.w600)),
+      body: Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              AppColors.backgroundGradientStart,
+              AppColors.backgroundGradientEnd,
+            ],
           ),
-        ],
-      ),
-      body: SingleChildScrollView(
-        child: Form(
-          key: _formKey,
+        ),
+        child: SafeArea(
           child: Column(children: [
 
-            // ── Photo section ──────────────────────────────
-            _PhotoSection(
-              photoUrl:      _photoUrl,
-              name:          _nameCtrl.text,
-              uploading:     _uploadingPhoto,
-              onTap:         () => _showPhotoSheet(),
-            ),
-            const SizedBox(height: 16),
-
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Column(children: [
-
-                // ── Personal info fields ───────────────────
-                _FormSection(
-                  title: 'Informations personnelles',
-                  children: [
-                    _Field(ctrl: _nameCtrl,     label: 'Nom complet',  icon: Icons.person_rounded,
-                        validator: (v) => v!.isEmpty ? 'Champ requis' : null),
-                    _Field(ctrl: _locationCtrl, label: 'Localisation', icon: Icons.location_on_rounded),
-                    _Field(ctrl: _phoneCtrl,    label: 'Téléphone',    icon: Icons.phone_rounded,
-                        keyboardType: TextInputType.phone),
-                  ],
+            // ── Gradient header ──────────────────────────────
+            Container(
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [Color(0xFFFF8FAB), AppColors.primaryPink],
                 ),
-                const SizedBox(height: 16),
-
-                // ── Professional info fields ───────────────
-                _FormSection(
-                  title: 'Profil professionnel',
-                  children: [
-                    _Field(ctrl: _expCtrl,  label: "Années d'expérience", icon: Icons.work_rounded,
-                        hint: 'Ex: 3 ans',
-                        validator: (v) => v!.isEmpty ? 'Champ requis' : null),
-                    _Field(ctrl: _descCtrl, label: 'Description',          icon: Icons.description_rounded,
-                        maxLines: 4, hint: 'Décrivez-vous...',
-                        validator: (v) => v!.isEmpty ? 'Champ requis' : null),
-                  ],
-                ),
-                const SizedBox(height: 16),
-
-                // ── Skills editor ──────────────────────────
-                _FormSection(
-                  title: 'Compétences',
-                  children: [
-                    _SkillsEditor(
-                      skills:   _skills,
-                      color:    _pink,
-                      onDelete: (s) => setState(() => _skills.remove(s)),
-                      onAdd:    (s) => setState(() => _skills.add(s)),
+              ),
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 20),
+              child: Row(children: [
+                GestureDetector(
+                  onTap: () => Navigator.pop(context),
+                  child: Container(
+                    width: 38,
+                    height: 38,
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.2),
+                      borderRadius: BorderRadius.circular(12),
                     ),
-                  ],
-                ),
-                const SizedBox(height: 24),
-
-                // ── Save button ────────────────────────────
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    onPressed: _saving ? null : _save,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: _pink,
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                      shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(16)),
-                      elevation: 0,
-                    ),
-                    child: _saving
-                        ? const CircularProgressIndicator(
-                        color: Colors.white, strokeWidth: 2)
-                        : const Text('Enregistrer les modifications',
-                        style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600)),
+                    child: const Icon(Icons.close_rounded,
+                        size: 18, color: Colors.white),
                   ),
                 ),
-                const SizedBox(height: 30),
+                const SizedBox(width: 14),
+                const Expanded(
+                  child: Text(
+                    'Modifier mon profil',
+                    style: TextStyle(
+                        fontSize: 17,
+                        fontWeight: FontWeight.w800,
+                        color: Colors.white),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                GestureDetector(
+                  onTap: _isSaving ? null : _save,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 18, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(14),
+                      boxShadow: [
+                        BoxShadow(
+                            color: Colors.black.withOpacity(0.1),
+                            blurRadius: 8,
+                            offset: const Offset(0, 3))
+                      ],
+                    ),
+                    child: _isSaving
+                        ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: AppColors.primaryPink))
+                        : const Text(
+                      'Enregistrer',
+                      style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w800,
+                          color: AppColors.primaryPink),
+                    ),
+                  ),
+                ),
               ]),
+            ),
+
+            // ── Scrollable content ───────────────────────────
+            Expanded(
+              child: ListView(
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 30),
+                children: [
+                  _buildSection('📷 Photo de profil',
+                      _buildPhotoSection()),
+                  const SizedBox(height: 16),
+
+                  _buildSection('📝 À propos',
+                      _buildBioSection()),
+                  const SizedBox(height: 16),
+
+                  _buildSection('🎓 Diplômes',
+                      _buildListSection(
+                        controller: _diplomeController,
+                        items:      _diplomes,
+                        hint:  'Ex: CAP Petite Enfance',
+                        icon:  Icons.school_outlined,
+                        color: AppColors.primaryPink,
+                      )),
+                  const SizedBox(height: 16),
+
+                  _buildSection('⭐ Compétences',
+                      _buildListSection(
+                        controller: _competenceController,
+                        items:      _competences,
+                        hint:  'Ex: Premiers secours',
+                        icon:  Icons.star_outline_rounded,
+                        color: AppColors.buttonBlue,
+                      )),
+                  const SizedBox(height: 16),
+
+                  _buildSection('🕐 Disponibilités',
+                      _buildDisponibilitesSection()),
+                  const SizedBox(height: 16),
+
+                  _buildSection("👶 Tranches d'âge",
+                      _buildChipsSection(
+                        list:     _ageGroupsList,
+                        selected: _ageGroups,
+                        color:    Colors.teal,
+                      )),
+                  const SizedBox(height: 16),
+
+                  _buildSection('📄 Documents officiels',
+                      _buildDocsSection()),
+                ],
+              ),
             ),
           ]),
         ),
@@ -294,307 +390,625 @@ class _BabysitterEditProfileScreenState
     );
   }
 
-  // ── Bottom sheet for photo source selection ────────────────
-  void _showPhotoSheet() {
-    showModalBottomSheet(
-      context: context,
-      shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (_) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(20),
-          child: Column(mainAxisSize: MainAxisSize.min, children: [
-            // Drag handle
-            Container(
-              width: 40, height: 4,
-              decoration: BoxDecoration(
-                  color: Colors.grey[300],
-                  borderRadius: BorderRadius.circular(4)),
-            ),
-            const SizedBox(height: 20),
-            const Text('Choisir une photo',
-                style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
-            const SizedBox(height: 20),
-            ListTile(
-              leading: CircleAvatar(
-                backgroundColor: _pink.withOpacity(0.1),
-                child: Icon(Icons.camera_alt_rounded, color: _pink),
-              ),
-              title: const Text('Prendre une photo'),
-              onTap: () => _pickPhoto(ImageSource.camera),
-            ),
-            ListTile(
-              leading: CircleAvatar(
-                backgroundColor: _pink.withOpacity(0.1),
-                child: Icon(Icons.photo_library_rounded, color: _pink),
-              ),
-              title: const Text('Choisir depuis la galerie'),
-              onTap: () => _pickPhoto(ImageSource.gallery),
-            ),
-            if (_photoUrl.isNotEmpty)
-              ListTile(
-                leading: const CircleAvatar(
-                  backgroundColor: Color(0xFFFFEEEE),
-                  child: Icon(Icons.delete_rounded, color: Colors.red),
-                ),
-                title: const Text('Supprimer la photo',
-                    style: TextStyle(color: Colors.red)),
-                onTap: _deletePhoto,
-              ),
-          ]),
+  // ── Section card wrapper ─────────────────────────────────────
+  Widget _buildSection(String title, Widget child) =>
+      Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(
+          title.toUpperCase(),
+          style: const TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+              color: AppColors.textGrey,
+              letterSpacing: 1.2),
         ),
-      ),
+        const SizedBox(height: 10),
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(18),
+            boxShadow: [
+              BoxShadow(
+                  color: Colors.black.withOpacity(0.05),
+                  blurRadius: 12,
+                  offset: const Offset(0, 3))
+            ],
+          ),
+          child: child,
+        ),
+      ]);
+
+  // ── Photo section ────────────────────────────────────────────
+  Widget _buildPhotoSection() => Center(
+    child: GestureDetector(
+      onTap: _pickPhoto,
+      child: Stack(children: [
+        Container(
+          width: 90,
+          height: 90,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            border: Border.all(
+                color: AppColors.primaryPink.withOpacity(0.4),
+                width: 3),
+            boxShadow: [
+              BoxShadow(
+                  color: AppColors.primaryPink.withOpacity(0.15),
+                  blurRadius: 16)
+            ],
+          ),
+          child: ClipOval(
+            child: _photoBase64 != null
+                ? Image.memory(base64Decode(_photoBase64!),
+                fit: BoxFit.cover)
+                : Container(
+                color: AppColors.lightPink,
+                child: const Icon(Icons.person_rounded,
+                    size: 40, color: AppColors.primaryPink)),
+          ),
+        ),
+        Positioned(
+          bottom: 0,
+          right: 0,
+          child: Container(
+            width: 28,
+            height: 28,
+            decoration: BoxDecoration(
+                color: AppColors.primaryPink,
+                shape: BoxShape.circle,
+                border: Border.all(color: Colors.white, width: 2)),
+            child: const Icon(Icons.camera_alt_rounded,
+                color: Colors.white, size: 14),
+          ),
+        ),
+      ]),
+    ),
+  );
+
+  // ── Bio section ──────────────────────────────────────────────
+  Widget _buildBioSection() => TextField(
+    controller: _bioController,
+    maxLines: 4,
+    maxLength: 500,
+    style:
+    const TextStyle(fontSize: 14, color: AppColors.textDark),
+    decoration: InputDecoration(
+      hintText: 'Présentez-vous en quelques mots...',
+      hintStyle: const TextStyle(
+          color: AppColors.textGrey, fontSize: 14),
+      filled: true,
+      fillColor: AppColors.lightPink,
+      border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: BorderSide.none),
+      focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: const BorderSide(
+              color: AppColors.primaryPink, width: 1.5)),
+      contentPadding: const EdgeInsets.all(14),
+    ),
+  );
+
+  // ── List section (diplomas / competences) ───────────────────
+  Widget _buildListSection({
+    required TextEditingController controller,
+    required List<String> items,
+    required String hint,
+    required IconData icon,
+    required Color color,
+  }) =>
+      Column(children: [
+        Row(children: [
+          Expanded(
+            child: TextField(
+              controller: controller,
+              style: const TextStyle(
+                  fontSize: 14, color: AppColors.textDark),
+              decoration: InputDecoration(
+                hintText: hint,
+                hintStyle: const TextStyle(
+                    color: AppColors.textGrey, fontSize: 13),
+                filled: true,
+                fillColor: AppColors.lightPink,
+                prefixIcon: Icon(icon, color: color, size: 18),
+                border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide.none),
+                focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide(color: color, width: 1.5)),
+                contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 14, vertical: 12),
+              ),
+            ),
+          ),
+          const SizedBox(width: 10),
+          GestureDetector(
+            onTap: () {
+              final val = controller.text.trim();
+              if (val.isNotEmpty && !items.contains(val)) {
+                setState(() {
+                  items.add(val);
+                  controller.clear();
+                });
+              }
+            },
+            child: Container(
+              width: 44,
+              height: 44,
+              decoration: BoxDecoration(
+                  color: color,
+                  borderRadius: BorderRadius.circular(12)),
+              child: const Icon(Icons.add, color: Colors.white),
+            ),
+          ),
+        ]),
+        if (items.isNotEmpty) ...[
+          const SizedBox(height: 12),
+          ...items.asMap().entries.map((e) => Container(
+            margin: const EdgeInsets.only(bottom: 8),
+            padding: const EdgeInsets.symmetric(
+                horizontal: 14, vertical: 10),
+            decoration: BoxDecoration(
+              color: color.withOpacity(0.07),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: color.withOpacity(0.15)),
+            ),
+            child: Row(children: [
+              Icon(icon, color: color, size: 16),
+              const SizedBox(width: 10),
+              Expanded(
+                  child: Text(e.value,
+                      style: const TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.textDark))),
+              GestureDetector(
+                onTap: () =>
+                    setState(() => items.removeAt(e.key)),
+                child: Icon(Icons.close_rounded,
+                    color: color.withOpacity(0.6), size: 18),
+              ),
+            ]),
+          )),
+        ],
+      ]);
+
+  // ── Disponibilités section (jour → périodes) ─────────────────
+  Widget _buildDisponibilitesSection() {
+    return Column(
+      children: _jours.asMap().entries.map((entry) {
+        final isLast = entry.key == _jours.length - 1;
+        final jour   = entry.value;
+        final selectedPeriodes = _disponibilites[jour] ?? <String>{};
+        final jouActif = selectedPeriodes.isNotEmpty;
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Day row header
+            Row(children: [
+              GestureDetector(
+                onTap: () => setState(() {
+                  if (jouActif) {
+                    _disponibilites[jour] = <String>{};
+                  } else {
+                    _disponibilites[jour] = Set<String>.from(_periodes);
+                  }
+                }),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 200),
+                  width: 22,
+                  height: 22,
+                  decoration: BoxDecoration(
+                    color: jouActif
+                        ? AppColors.primaryPink
+                        : Colors.transparent,
+                    borderRadius: BorderRadius.circular(6),
+                    border: Border.all(
+                      color: jouActif
+                          ? AppColors.primaryPink
+                          : AppColors.textGrey.withOpacity(0.4),
+                      width: 1.5,
+                    ),
+                  ),
+                  child: jouActif
+                      ? const Icon(Icons.check_rounded,
+                      color: Colors.white, size: 14)
+                      : null,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Text(
+                jour,
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700,
+                  color: jouActif ? AppColors.textDark : AppColors.textGrey,
+                ),
+              ),
+            ]),
+            const SizedBox(height: 8),
+            // Period chips for this day
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: _periodes.map((periode) {
+                final isSel = selectedPeriodes.contains(periode);
+                return GestureDetector(
+                  onTap: () => setState(() {
+                    final set = _disponibilites[jour] ?? <String>{};
+                    if (isSel) {
+                      set.remove(periode);
+                    } else {
+                      set.add(periode);
+                    }
+                    _disponibilites[jour] = set;
+                  }),
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 200),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 12, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: isSel
+                          ? AppColors.primaryPink
+                          : AppColors.lightPink,
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(
+                        color: isSel
+                            ? AppColors.primaryPink
+                            : Colors.transparent,
+                      ),
+                    ),
+                    child: Text(
+                      periode,
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: isSel
+                            ? Colors.white
+                            : AppColors.textGrey,
+                      ),
+                    ),
+                  ),
+                );
+              }).toList(),
+            ),
+            if (!isLast) ...[
+              const SizedBox(height: 12),
+              const Divider(
+                  height: 1,
+                  thickness: 1,
+                  color: Color(0xFFF5EEF0)),
+              const SizedBox(height: 12),
+            ] else
+              const SizedBox(height: 4),
+          ],
+        );
+      }).toList(),
     );
+  }
+
+  // ── Chips section (generic — used for âge groups) ────────────
+  Widget _buildChipsSection({
+    required List<String> list,
+    required List<String> selected,
+    required Color color,
+  }) =>
+      Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        children: list.map((item) {
+          final isSel = selected.contains(item);
+          return GestureDetector(
+            onTap: () => setState(() =>
+            isSel ? selected.remove(item) : selected.add(item)),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 200),
+              padding: const EdgeInsets.symmetric(
+                  horizontal: 14, vertical: 8),
+              decoration: BoxDecoration(
+                color: isSel ? color : AppColors.lightPink,
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(
+                    color: isSel ? color : Colors.transparent),
+              ),
+              child: Text(item,
+                  style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: isSel
+                          ? Colors.white
+                          : AppColors.textDark)),
+            ),
+          );
+        }).toList(),
+      );
+
+  // ── Documents section ────────────────────────────────────────
+  Widget _buildDocsSection() {
+    final docs = [
+      {
+        'type':     'diplome',
+        'title':    'Diplôme',
+        'subtitle': 'Licence, CAP Petite Enfance... (PDF)',
+        'icon':     Icons.school_rounded,
+        'color':    AppColors.primaryPink,
+        'name':     _diplomePdfName,
+        'statut':   widget.data['diplomePdfStatut'] ?? 'non_soumis',
+      },
+      {
+        'type':     'cv',
+        'title':    'CV',
+        'subtitle': 'Curriculum Vitae (PDF)',
+        'icon':     Icons.description_rounded,
+        'color':    AppColors.buttonBlue,
+        'name':     _cvName,
+        'statut':   widget.data['cvStatut'] ?? 'non_soumis',
+      },
+      {
+        'type':     'cni',
+        'title':    "Carte d'identité",
+        'subtitle': 'Recto/verso (PDF, JPG, PNG)',
+        'icon':     Icons.badge_rounded,
+        'color':    Colors.teal,
+        'name':     _cniName,
+        'statut':   widget.data['cniStatut'] ?? 'non_soumis',
+      },
+    ];
+
+    return Column(children: [
+      Container(
+        padding: const EdgeInsets.all(12),
+        margin: const EdgeInsets.only(bottom: 14),
+        decoration: BoxDecoration(
+          color: Colors.amber.withOpacity(0.1),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Colors.amber.withOpacity(0.3)),
+        ),
+        child: const Row(children: [
+          Icon(Icons.info_outline_rounded,
+              color: Colors.amber, size: 18),
+          SizedBox(width: 10),
+          Expanded(
+              child: Text(
+                'Les documents sont vérifiés par notre équipe. Un badge ✅ sera affiché sur votre profil une fois validés.',
+                style: TextStyle(
+                    fontSize: 12,
+                    color: AppColors.textDark,
+                    height: 1.4),
+              )),
+        ]),
+      ),
+      ...docs.map((doc) => Padding(
+        padding: const EdgeInsets.only(bottom: 12),
+        child: _DocCard(
+          title:    doc['title']    as String,
+          subtitle: doc['subtitle'] as String,
+          icon:     doc['icon']     as IconData,
+          color:    doc['color']    as Color,
+          fileName: doc['name']     as String?,
+          statut:   doc['statut']   as String,
+          isLoading: _loadingDoc,
+          onTap: () => _pickDoc(doc['type'] as String),
+          onRemove: () => setState(() {
+            if (doc['type'] == 'diplome') {
+              _diplomePdfBase64 = null;
+              _diplomePdfName   = null;
+            } else if (doc['type'] == 'cv') {
+              _cvBase64 = null;
+              _cvName   = null;
+            } else {
+              _cniBase64 = null;
+              _cniName   = null;
+            }
+          }),
+        ),
+      )),
+    ]);
   }
 }
 
 // ─────────────────────────────────────────────────────────────
-// SMALL WIDGETS
+// DOC CARD
 // ─────────────────────────────────────────────────────────────
+class _DocCard extends StatelessWidget {
+  final String title, subtitle, statut;
+  final IconData icon;
+  final Color color;
+  final String? fileName;
+  final bool isLoading;
+  final VoidCallback onTap, onRemove;
 
-// Pink header with circular avatar + camera tap
-class _PhotoSection extends StatelessWidget {
-  final String photoUrl;
-  final String name;
-  final bool uploading;
-  final VoidCallback onTap;
-  const _PhotoSection({
-    required this.photoUrl,
-    required this.name,
-    required this.uploading,
+  const _DocCard({
+    required this.title,
+    required this.subtitle,
+    required this.statut,
+    required this.icon,
+    required this.color,
+    required this.fileName,
+    required this.isLoading,
     required this.onTap,
+    required this.onRemove,
   });
 
-  static const _pink = Color(0xFFFF6B8A);
+  Color get _statutColor {
+    switch (statut) {
+      case 'validé':     return Colors.green;
+      case 'en_attente': return Colors.orange;
+      case 'refusé':     return Colors.red;
+      default:           return AppColors.textGrey;
+    }
+  }
+
+  String get _statutLabel {
+    switch (statut) {
+      case 'validé':     return '✅ Validé';
+      case 'en_attente': return '⏳ En vérification';
+      case 'refusé':     return '❌ Refusé';
+      default:           return 'Non soumis';
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
+    final hasFile = fileName != null;
     return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(vertical: 28),
-      decoration: const BoxDecoration(
-        color: _pink,
-        borderRadius: BorderRadius.only(
-          bottomLeft: Radius.circular(30),
-          bottomRight: Radius.circular(30),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: hasFile
+            ? color.withOpacity(0.04)
+            : Colors.grey.withOpacity(0.03),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: hasFile
+              ? color.withOpacity(0.25)
+              : Colors.grey.withOpacity(0.15),
+          width: 1.5,
         ),
+        boxShadow: [
+          BoxShadow(
+              color: Colors.black.withOpacity(0.03),
+              blurRadius: 8)
+        ],
       ),
-      child: Column(children: [
-        GestureDetector(
-          onTap: onTap,
-          child: Stack(alignment: Alignment.bottomRight, children: [
-            CircleAvatar(
-              radius: 54,
-              backgroundColor: Colors.white,
-              child: uploading
-                  ? const CircularProgressIndicator(
-                  color: _pink, strokeWidth: 2)
-                  : CircleAvatar(
-                radius: 50,
-                backgroundColor: _pink.withOpacity(0.2),
-                backgroundImage:
-                photoUrl.isNotEmpty ? NetworkImage(photoUrl) : null,
-                child: photoUrl.isEmpty
-                    ? Text(
-                  name.isNotEmpty
-                      ? name[0].toUpperCase()
-                      : '?',
-                  style: const TextStyle(
-                      fontSize: 32,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white),
-                )
-                    : null,
-              ),
+      child:
+      Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Container(
+            width: 42,
+            height: 42,
+            decoration: BoxDecoration(
+                color: color.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(12)),
+            child: isLoading
+                ? Padding(
+                padding: const EdgeInsets.all(10),
+                child: CircularProgressIndicator(
+                    strokeWidth: 2, color: color))
+                : Icon(icon, color: color, size: 20),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+              child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(title,
+                        style: const TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w700,
+                            color: AppColors.textDark)),
+                    Text(subtitle,
+                        style: const TextStyle(
+                            fontSize: 11, color: AppColors.textGrey)),
+                  ])),
+          Container(
+            padding: const EdgeInsets.symmetric(
+                horizontal: 8, vertical: 3),
+            decoration: BoxDecoration(
+              color: _statutColor.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(20),
             ),
-            // Camera icon badge
-            CircleAvatar(
-              radius: 16,
-              backgroundColor: Colors.white,
-              child: CircleAvatar(
-                radius: 14,
-                backgroundColor: _pink,
-                child: const Icon(Icons.camera_alt_rounded,
-                    color: Colors.white, size: 14),
+            child: Text(_statutLabel,
+                style: TextStyle(
+                    fontSize: 10,
+                    color: _statutColor,
+                    fontWeight: FontWeight.w700)),
+          ),
+        ]),
+        if (hasFile) ...[
+          const SizedBox(height: 10),
+          Row(children: [
+            const Icon(Icons.attach_file_rounded,
+                size: 14, color: AppColors.textGrey),
+            const SizedBox(width: 6),
+            Expanded(
+                child: Text(fileName!,
+                    style: const TextStyle(
+                        fontSize: 12,
+                        color: AppColors.textDark,
+                        fontWeight: FontWeight.w600),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis)),
+            GestureDetector(
+              onTap: onRemove,
+              child: Container(
+                padding: const EdgeInsets.all(4),
+                decoration: BoxDecoration(
+                    color: Colors.red.withOpacity(0.08),
+                    borderRadius: BorderRadius.circular(6)),
+                child: const Icon(Icons.close_rounded,
+                    color: Colors.red, size: 14),
               ),
             ),
           ]),
-        ),
+        ],
         const SizedBox(height: 10),
-        const Text('Changer la photo de profil',
-            style: TextStyle(color: Colors.white70, fontSize: 13)),
+        GestureDetector(
+          onTap: onTap,
+          child: Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(vertical: 10),
+            decoration: BoxDecoration(
+              color: color.withOpacity(0.08),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: color.withOpacity(0.2)),
+            ),
+            child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                      hasFile
+                          ? Icons.refresh_rounded
+                          : Icons.upload_file_rounded,
+                      color: color,
+                      size: 16),
+                  const SizedBox(width: 8),
+                  Text(hasFile ? 'Remplacer' : 'Choisir un fichier',
+                      style: TextStyle(
+                          fontSize: 13,
+                          color: color,
+                          fontWeight: FontWeight.w700)),
+                ]),
+          ),
+        ),
       ]),
     );
   }
 }
 
-// Card wrapper with a section title for grouping form fields
-class _FormSection extends StatelessWidget {
-  final String title;
-  final List<Widget> children;
-  const _FormSection({required this.title, required this.children});
-
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      elevation: 0,
-      color: Colors.white,
-      shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16)),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(title,
-                style: TextStyle(
-                    fontWeight: FontWeight.w700,
-                    fontSize: 14,
-                    color: Colors.grey[700])),
-            const SizedBox(height: 14),
-            // Space out each child field
-            for (int i = 0; i < children.length; i++) ...[
-              children[i],
-              if (i < children.length - 1) const SizedBox(height: 14),
-            ],
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-// Single text form field with icon, label and optional hint
-class _Field extends StatelessWidget {
-  final TextEditingController ctrl;
-  final String label;
+// ─────────────────────────────────────────────────────────────
+// SOURCE OPTION (bottom sheet)
+// ─────────────────────────────────────────────────────────────
+class _SourceOption extends StatelessWidget {
   final IconData icon;
-  final String? hint;
-  final int maxLines;
-  final TextInputType? keyboardType;
-  final String? Function(String?)? validator;
-
-  const _Field({
-    required this.ctrl,
-    required this.label,
-    required this.icon,
-    this.hint,
-    this.maxLines = 1,
-    this.keyboardType,
-    this.validator,
-  });
-
-  static const _pink = Color(0xFFFF6B8A);
-
-  @override
-  Widget build(BuildContext context) {
-    return TextFormField(
-      controller: ctrl,
-      maxLines: maxLines,
-      keyboardType: keyboardType,
-      validator: validator,
-      decoration: InputDecoration(
-        labelText: label,
-        hintText: hint,
-        prefixIcon: Icon(icon, color: _pink, size: 20),
-        border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
-            borderSide: BorderSide(color: Colors.grey[200]!)),
-        enabledBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
-            borderSide: BorderSide(color: Colors.grey[200]!)),
-        focusedBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
-            borderSide: const BorderSide(color: _pink, width: 1.5)),
-        filled: true,
-        fillColor: Colors.grey[50],
-        contentPadding:
-        const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-        labelStyle: TextStyle(color: Colors.grey[600], fontSize: 13),
-      ),
-    );
-  }
-}
-
-// Skill chips with delete buttons + an "Add" chip
-class _SkillsEditor extends StatelessWidget {
-  final List<String> skills;
+  final String label;
   final Color color;
-  final void Function(String) onDelete;
-  final void Function(String) onAdd;
-
-  const _SkillsEditor({
-    required this.skills,
+  final VoidCallback onTap;
+  const _SourceOption({
+    required this.icon,
+    required this.label,
     required this.color,
-    required this.onDelete,
-    required this.onAdd,
+    required this.onTap,
   });
-
-  void _showAddDialog(BuildContext context) {
-    final ctrl = TextEditingController();
-    showDialog(
-      context: context,
-      builder: (_) => AlertDialog(
-        shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16)),
-        title: const Text('Ajouter une compétence'),
-        content: TextField(
-          controller: ctrl,
-          autofocus: true,
-          decoration: InputDecoration(
-            hintText: 'Ex: Soins aux nourrissons',
-            border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12)),
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: Text('Annuler',
-                style: TextStyle(color: Colors.grey[600])),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              final s = ctrl.text.trim();
-              if (s.isNotEmpty) onAdd(s);
-              Navigator.pop(context);
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: color,
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10)),
-            ),
-            child: const Text('Ajouter',
-                style: TextStyle(color: Colors.white)),
-          ),
-        ],
-      ),
-    );
-  }
-
   @override
-  Widget build(BuildContext context) {
-    return Wrap(
-      spacing: 8,
-      runSpacing: 8,
-      children: [
-        // Existing skills with a delete (×) button
-        ...skills.map((s) => Chip(
-          label: Text(s, style: const TextStyle(fontSize: 12)),
-          backgroundColor: color.withOpacity(0.1),
-          labelStyle: TextStyle(color: color),
-          deleteIcon: Icon(Icons.close_rounded, size: 14, color: color),
-          onDeleted: () => onDelete(s),
-        )),
-        // Add new skill chip
-        ActionChip(
-          avatar: Icon(Icons.add_rounded, color: color, size: 16),
-          label: Text('Ajouter',
-              style: TextStyle(color: color, fontSize: 12)),
-          backgroundColor: color.withOpacity(0.08),
-          onPressed: () => _showAddDialog(context),
-        ),
-      ],
-    );
-  }
+  Widget build(BuildContext context) => GestureDetector(
+    onTap: onTap,
+    child: Container(
+      padding: const EdgeInsets.symmetric(vertical: 20),
+      decoration: BoxDecoration(
+          color: color.withOpacity(0.08),
+          borderRadius: BorderRadius.circular(16)),
+      child: Column(children: [
+        Icon(icon, size: 32, color: color),
+        const SizedBox(height: 8),
+        Text(label,
+            style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w700,
+                color: color)),
+      ]),
+    ),
+  );
 }
