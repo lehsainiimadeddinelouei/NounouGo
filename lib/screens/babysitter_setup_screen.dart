@@ -458,12 +458,12 @@ class _BabysitterSetupScreenState
                         height: 22,
                         decoration: BoxDecoration(
                           color: jouActif
-                              ? AppColors.primaryPink
+                              ? const Color(0xFF4CAF50)
                               : Colors.transparent,
                           borderRadius: BorderRadius.circular(6),
                           border: Border.all(
                             color: jouActif
-                                ? AppColors.primaryPink
+                                ? const Color(0xFF4CAF50)
                                 : AppColors.textGrey.withOpacity(0.4),
                             width: 1.5,
                           ),
@@ -509,12 +509,12 @@ class _BabysitterSetupScreenState
                               horizontal: 12, vertical: 6),
                           decoration: BoxDecoration(
                             color: isSel
-                                ? AppColors.primaryPink
-                                : AppColors.lightPink,
+                                ? const Color(0xFF4CAF50)
+                                : const Color(0xFFE8F5E9),
                             borderRadius: BorderRadius.circular(20),
                             border: Border.all(
                               color: isSel
-                                  ? AppColors.primaryPink
+                                  ? const Color(0xFF4CAF50)
                                   : Colors.transparent,
                             ),
                           ),
@@ -537,7 +537,7 @@ class _BabysitterSetupScreenState
                     const Divider(
                         height: 1,
                         thickness: 1,
-                        color: Color(0xFFF5EEF0)),
+                        color: Color(0xFFE8F5E9)),
                     const SizedBox(height: 12),
                   ] else
                     const SizedBox(height: 4),
