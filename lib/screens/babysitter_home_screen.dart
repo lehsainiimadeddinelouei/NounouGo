@@ -1844,21 +1844,17 @@ class _ProfilTabState extends State<_ProfilTab> {
                                               horizontal: 10,
                                               vertical: 4),
                                           decoration: BoxDecoration(
-                                            color: AppColors.primaryPink
-                                                .withOpacity(0.1),
+                                            color: const Color(0xFFE8F5E9),
                                             borderRadius:
                                             BorderRadius.circular(
                                                 20),
                                             border: Border.all(
-                                                color: AppColors
-                                                    .primaryPink
-                                                    .withOpacity(0.2)),
+                                                color: const Color(0xFFA5D6A7)),
                                           ),
                                           child: Text(p,
                                               style: const TextStyle(
                                                   fontSize: 12,
-                                                  color: AppColors
-                                                      .primaryPink,
+                                                  color: Color(0xFF2E7D32),
                                                   fontWeight:
                                                   FontWeight.w600)),
                                         ))
@@ -1887,17 +1883,15 @@ class _ProfilTabState extends State<_ProfilTab> {
                           padding: const EdgeInsets.symmetric(
                               horizontal: 14, vertical: 8),
                           decoration: BoxDecoration(
-                            color:
-                            AppColors.primaryPink.withOpacity(0.1),
+                            color: const Color(0xFFE8F5E9),
                             borderRadius: BorderRadius.circular(20),
                             border: Border.all(
-                                color: AppColors.primaryPink
-                                    .withOpacity(0.2)),
+                                color: const Color(0xFFA5D6A7)),
                           ),
                           child: Text(d,
                               style: const TextStyle(
                                   fontSize: 13,
-                                  color: AppColors.primaryPink,
+                                  color: Color(0xFF2E7D32),
                                   fontWeight: FontWeight.w600)),
                         ))
                             .toList(),
