@@ -149,8 +149,15 @@ class _LoginScreenState extends State<LoginScreen>
         final profilComplet = doc.data()?['profilComplet'] ?? false;
         if (!mounted) return;
         Widget destination;
-        if (role == 'Babysitter') {
-          destination = profilComplet ? const BabysitterHomeScreen() : const BabysitterSetupScreen();
+        final roleLower = role.toString().toLowerCase();
+        if (roleLower == 'nounou' || roleLower == 'babysitter') {
+          destination = profilComplet
+              ? const BabysitterHomeScreen()
+              : const BabysitterSetupScreen();
+        } else if (roleLower == 'parent') {
+          destination = const ParentHomeScreen();
+        } else if (roleLower == 'admin') {
+          destination = const AdminScreen();
         } else {
           destination = const ParentHomeScreen();
         }
