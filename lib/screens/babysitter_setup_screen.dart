@@ -634,58 +634,9 @@ class _BabysitterSetupScreenState
         if (_diplomes.isEmpty)
           _EmptyHint(text: 'Aucun diplôme ajouté'),
         const SizedBox(height: 24),
-        _sectionTitle('Documents officiels'),
+        _sectionTitle(''),
         const SizedBox(height: 12),
-        Container(
-          padding: const EdgeInsets.all(12),
-          margin: const EdgeInsets.only(bottom: 12),
-          decoration: BoxDecoration(
-            color: Colors.amber.withOpacity(0.1),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-                color: Colors.amber.withOpacity(0.3)),
-          ),
-          child: const Row(children: [
-            Icon(Icons.info_outline_rounded,
-                color: Colors.amber, size: 18),
-            SizedBox(width: 10),
-            Expanded(
-                child: Text(
-                  'Documents vérifiés par notre équipe (facultatif lors de l\'inscription).',
-                  style: TextStyle(
-                      fontSize: 12,
-                      color: AppColors.textDark,
-                      height: 1.4),
-                )),
-          ]),
-        ),
-        _DocumentUploadCard(
-          title: 'Diplôme (PDF)',
-          subtitle: 'CAP, Licence, certificat...',
-          icon: Icons.school_rounded,
-          color: AppColors.primaryPink,
-          fileName: _diplomePdfName,
-          isLoading: _loadingPdf,
-          onTap: () => _pickPdf('diplome'),
-          onRemove: () => setState(() {
-            _diplomePdfBase64 = null;
-            _diplomePdfName   = null;
-          }),
-        ),
-        const SizedBox(height: 12),
-        _DocumentUploadCard(
-          title: "Carte d'identité",
-          subtitle: 'Recto/verso (PDF, JPG, PNG)',
-          icon: Icons.badge_rounded,
-          color: Colors.teal,
-          fileName: _cniName,
-          isLoading: _loadingPdf,
-          onTap: () => _pickPdf('cni'),
-          onRemove: () => setState(() {
-            _cniBase64 = null;
-            _cniName   = null;
-          }),
-        ),
+
         const SizedBox(height: 20),
       ]);
 

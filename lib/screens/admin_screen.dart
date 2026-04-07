@@ -544,7 +544,10 @@ class _NounouDocCardState extends State<_NounouDocCard> {
   bool _expanded = false;
   Future<void> _updateDocStatut(String docType, String statut) async {
     final field = docType == 'diplome' ? 'diplomePdfStatut'
-        : docType == 'cv' ? 'cvStatut' : 'cniStatut';
+        : docType == 'cv' ? 'cvStatut'
+        : docType == 'cni' ? 'cniStatut'
+        : docType == 'cnas' ? 'cnasStatut'
+        : 'santeStatut';
     await FirebaseFirestore.instance.collection('users').doc(widget.uid).update({field: statut});
     // Mettre à jour aussi la sous-collection
     try {
@@ -573,8 +576,10 @@ class _NounouDocCardState extends State<_NounouDocCard> {
       final diplomeOk = (field == 'diplomePdfStatut') || d['diplomePdfStatut'] == 'validé';
       final cvOk = (field == 'cvStatut') || d['cvStatut'] == 'validé';
       final cniOk = (field == 'cniStatut') || d['cniStatut'] == 'validé';
+      final cnasOk = (field == 'cnasStatut') || d['cnasStatut'] == 'validé';
+      final santeOk = (field == 'santeStatut') || d['santeStatut'] == 'validé';
 
-      if (diplomeOk && cvOk && cniOk) {
+      if (diplomeOk && cvOk && cniOk && cnasOk && santeOk) {
         // Activer le compte automatiquement
         await FirebaseFirestore.instance.collection('users').doc(widget.uid).update({
           'documentsValides': true,
@@ -632,9 +637,21 @@ class _NounouDocCardState extends State<_NounouDocCard> {
           final type = sd['type'] as String? ?? subDoc.id;
           loaded.add({
             'type': type,
-            'label': type == 'diplome' ? 'Diplôme' : type == 'cv' ? 'CV' : "Carte d'identité",
-            'icon': type == 'diplome' ? Icons.school_rounded : type == 'cv' ? Icons.description_rounded : Icons.badge_rounded,
-            'color': type == 'diplome' ? AppColors.primaryPink : type == 'cv' ? AppColors.buttonBlue : Colors.teal,
+            'label': type == 'diplome' ? 'Diplôme'
+                : type == 'cv' ? 'CV'
+                : type == 'cni' ? "Carte d'identité"
+                : type == 'cnas' ? 'Attestation CNAS'
+                : 'Certificat santé mentale',
+            'icon': type == 'diplome' ? Icons.school_rounded
+                : type == 'cv' ? Icons.description_rounded
+                : type == 'cni' ? Icons.badge_rounded
+                : type == 'cnas' ? Icons.health_and_safety_rounded
+                : Icons.psychology_rounded,
+            'color': type == 'diplome' ? AppColors.primaryPink
+                : type == 'cv' ? AppColors.buttonBlue
+                : type == 'cni' ? Colors.teal
+                : type == 'cnas' ? Colors.green
+                : Colors.purple,
             'base64': sd['base64'] ?? '',
             'name': sd['name'] ?? '$type.pdf',
             'statut': sd['statut'] ?? 'en_attente',
@@ -727,10 +744,7 @@ class _NounouDocCardState extends State<_NounouDocCard> {
                 onValidate: () => _updateDocStatut(doc['type'], 'validé'),
                 onRefuse: () => _updateDocStatut(doc['type'], 'refusé'),
               )).toList(),
-              const SizedBox(height: 4),
-              const Divider(color: Colors.white12),
-              const SizedBox(height: 8),
-              _ConfirmNounouButton(uid: widget.uid, data: d),
+
             ]),
           ),
         ],
@@ -905,21 +919,21 @@ class _DocReviewCard extends StatelessWidget {
           Expanded(
             child: b64.isEmpty
                 ? const Center(child: Text('Document non disponible',
-                    style: TextStyle(color: Colors.white38, fontSize: 14)))
+                style: TextStyle(color: Colors.white38, fontSize: 14)))
                 : isImage
-                    ? InteractiveViewer(
-                        minScale: 0.5, maxScale: 5.0,
-                        child: Center(
-                          child: Padding(
-                            padding: const EdgeInsets.all(12),
-                            child: ClipRRect(
-                              borderRadius: BorderRadius.circular(12),
-                              child: Image.memory(base64Decode(b64), fit: BoxFit.contain),
-                            ),
-                          ),
-                        ),
-                      )
-                    : _PdfDownloadSection(b64: b64, fileName: fileName, color: color),
+                ? InteractiveViewer(
+              minScale: 0.5, maxScale: 5.0,
+              child: Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(12),
+                    child: Image.memory(base64Decode(b64), fit: BoxFit.contain),
+                  ),
+                ),
+              ),
+            )
+                : _PdfDownloadSection(b64: b64, fileName: fileName, color: color),
           ),
         ]),
       ),
@@ -971,16 +985,16 @@ class _PdfDownloadSectionState extends State<_PdfDownloadSection> {
       child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
         // Icône PDF
         Container(width: 96, height: 96,
-          decoration: BoxDecoration(
-            color: widget.color.withOpacity(0.12), shape: BoxShape.circle,
-            border: Border.all(color: widget.color.withOpacity(0.35), width: 2)),
-          child: Icon(Icons.picture_as_pdf_rounded, color: widget.color, size: 46)),
+            decoration: BoxDecoration(
+                color: widget.color.withOpacity(0.12), shape: BoxShape.circle,
+                border: Border.all(color: widget.color.withOpacity(0.35), width: 2)),
+            child: Icon(Icons.picture_as_pdf_rounded, color: widget.color, size: 46)),
         const SizedBox(height: 16),
 
         // Nom fichier
         Text(widget.fileName,
-          style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: Colors.white),
-          textAlign: TextAlign.center),
+            style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: Colors.white),
+            textAlign: TextAlign.center),
         const SizedBox(height: 8),
 
         // Taille
@@ -992,7 +1006,7 @@ class _PdfDownloadSectionState extends State<_PdfDownloadSection> {
             border: Border.all(color: widget.color.withOpacity(0.35)),
           ),
           child: Text('PDF · $sizeKo Ko',
-            style: TextStyle(fontSize: 12, color: widget.color, fontWeight: FontWeight.w600)),
+              style: TextStyle(fontSize: 12, color: widget.color, fontWeight: FontWeight.w600)),
         ),
         const SizedBox(height: 24),
 
@@ -1012,12 +1026,12 @@ class _PdfDownloadSectionState extends State<_PdfDownloadSection> {
               child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
                 if (_saving)
                   const SizedBox(width: 20, height: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2.5, color: Colors.white))
+                      child: CircularProgressIndicator(strokeWidth: 2.5, color: Colors.white))
                 else
                   const Icon(Icons.download_rounded, color: Colors.white, size: 22),
                 const SizedBox(width: 10),
                 Text(_saving ? 'Téléchargement...' : '⬇️  Télécharger le PDF',
-                  style: const TextStyle(fontSize: 15, color: Colors.white, fontWeight: FontWeight.w800)),
+                    style: const TextStyle(fontSize: 15, color: Colors.white, fontWeight: FontWeight.w800)),
               ]),
             ),
           ),
@@ -1027,7 +1041,7 @@ class _PdfDownloadSectionState extends State<_PdfDownloadSection> {
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(color: Colors.red.withOpacity(0.1), borderRadius: BorderRadius.circular(10)),
               child: Text('Erreur: $_error',
-                style: const TextStyle(fontSize: 11, color: Colors.red), textAlign: TextAlign.center),
+                  style: const TextStyle(fontSize: 11, color: Colors.red), textAlign: TextAlign.center),
             ),
           ],
         ],
@@ -1046,11 +1060,11 @@ class _PdfDownloadSectionState extends State<_PdfDownloadSection> {
                 Icon(Icons.check_circle_rounded, color: Colors.green, size: 22),
                 SizedBox(width: 8),
                 Text('Fichier sauvegardé !',
-                  style: TextStyle(fontSize: 15, color: Colors.green, fontWeight: FontWeight.w800)),
+                    style: TextStyle(fontSize: 15, color: Colors.green, fontWeight: FontWeight.w800)),
               ]),
               const SizedBox(height: 10),
               Text(_savedPath!, style: const TextStyle(fontSize: 11, color: Colors.white38),
-                textAlign: TextAlign.center),
+                  textAlign: TextAlign.center),
               const SizedBox(height: 12),
               // Copier chemin
               GestureDetector(
@@ -1079,8 +1093,8 @@ class _PdfDownloadSectionState extends State<_PdfDownloadSection> {
           GestureDetector(
             onTap: _save,
             child: Text('Télécharger à nouveau',
-              style: TextStyle(fontSize: 12, color: widget.color.withOpacity(0.7),
-                  decoration: TextDecoration.underline)),
+                style: TextStyle(fontSize: 12, color: widget.color.withOpacity(0.7),
+                    decoration: TextDecoration.underline)),
           ),
         ],
       ]),
@@ -1201,19 +1215,168 @@ class _UserAdminCard extends StatelessWidget {
   }
 
   Future<void> _deleteUser(BuildContext context) async {
+    final role = data['role'] ?? '';
+    final isBabysitter = role == 'Babysitter';
+
+    // ── Pour une nounou : charger ses avis avant de confirmer ──
+    List<Map<String, dynamic>> avisList = [];
+    double moyenneNote = 0;
+    if (isBabysitter) {
+      try {
+        final avisSnap = await FirebaseFirestore.instance
+            .collection('avis')
+            .where('nounouUid', isEqualTo: uid)
+            .orderBy('createdAt', descending: true)
+            .limit(20)
+            .get();
+        avisList = avisSnap.docs
+            .map((d) => d.data() as Map<String, dynamic>)
+            .toList();
+        if (avisList.isNotEmpty) {
+          final total = avisList.fold<double>(
+              0, (sum, a) => sum + ((a['notefinale'] ?? 0) as num).toDouble());
+          moyenneNote = total / avisList.length;
+        }
+      } catch (_) {}
+    }
+
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (_) => AlertDialog(
         backgroundColor: const Color(0xFF1A1A2E),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Text('Supprimer ?', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800)),
-        content: Text('Supprimer ${data['prenom']} ${data['nom']} définitivement ?',
-            style: const TextStyle(color: Colors.white70)),
+        title: Text(
+          isBabysitter ? '🔍 Avis & Suppression' : 'Supprimer ?',
+          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800),
+        ),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Supprimer ${data['prenom']} ${data['nom']} définitivement ?',
+                style: const TextStyle(color: Colors.white70),
+              ),
+              if (isBabysitter) ...[
+                const SizedBox(height: 14),
+                // Résumé des avis
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.05),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.white.withOpacity(0.1)),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(children: [
+                        const Icon(Icons.star_rounded, color: Colors.amber, size: 16),
+                        const SizedBox(width: 6),
+                        Text(
+                          avisList.isEmpty
+                              ? 'Aucun avis parent'
+                              : '${avisList.length} avis — Moyenne: ${moyenneNote.toStringAsFixed(1)}/5',
+                          style: const TextStyle(
+                              color: Colors.white, fontWeight: FontWeight.w700, fontSize: 13),
+                        ),
+                      ]),
+                      if (avisList.isNotEmpty) ...[
+                        const SizedBox(height: 10),
+                        ConstrainedBox(
+                          constraints: const BoxConstraints(maxHeight: 220),
+                          child: ListView.separated(
+                            shrinkWrap: true,
+                            itemCount: avisList.length,
+                            separatorBuilder: (_, __) => Divider(
+                                color: Colors.white.withOpacity(0.08), height: 12),
+                            itemBuilder: (_, i) {
+                              final a = avisList[i];
+                              final note = (a['notefinale'] ?? 0 as num).toDouble();
+                              final commentaire = (a['commentaire'] ?? '').toString().trim();
+                              final parentNom =
+                              '${a['parentPrenom'] ?? ''} ${a['parentNom'] ?? ''}'.trim();
+                              return Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(children: [
+                                    // Étoiles
+                                    ...List.generate(5, (s) => Icon(
+                                      s < note.round()
+                                          ? Icons.star_rounded
+                                          : Icons.star_outline_rounded,
+                                      color: Colors.amber,
+                                      size: 12,
+                                    )),
+                                    const SizedBox(width: 6),
+                                    Text(
+                                      note.toStringAsFixed(1),
+                                      style: const TextStyle(
+                                          color: Colors.amber, fontSize: 11,
+                                          fontWeight: FontWeight.w700),
+                                    ),
+                                    const Spacer(),
+                                    if (parentNom.isNotEmpty)
+                                      Text(parentNom,
+                                          style: const TextStyle(
+                                              color: Colors.white38, fontSize: 10)),
+                                  ]),
+                                  if (commentaire.isNotEmpty) ...[
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      commentaire,
+                                      style: const TextStyle(
+                                          color: Colors.white60, fontSize: 11, height: 1.4),
+                                      maxLines: 3,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ],
+                                ],
+                              );
+                            },
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: Colors.red.withOpacity(0.08),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: Colors.red.withOpacity(0.3)),
+                  ),
+                  child: const Row(children: [
+                    Icon(Icons.warning_amber_rounded, color: Colors.red, size: 16),
+                    SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Cette action supprimera définitivement la nounou et toutes ses données.',
+                        style: TextStyle(color: Colors.red, fontSize: 11, height: 1.4),
+                      ),
+                    ),
+                  ]),
+                ),
+              ],
+            ],
+          ),
+        ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false),
-              child: const Text('Annuler', style: TextStyle(color: Colors.white54))),
-          TextButton(onPressed: () => Navigator.pop(context, true),
-              child: const Text('Supprimer', style: TextStyle(color: Colors.red, fontWeight: FontWeight.w800))),
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Annuler', style: TextStyle(color: Colors.white54)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: Text(
+              isBabysitter ? '🗑️ Supprimer quand même' : 'Supprimer',
+              style: const TextStyle(color: Colors.red, fontWeight: FontWeight.w800),
+            ),
+          ),
         ],
       ),
     );
@@ -1224,7 +1387,7 @@ class _UserAdminCard extends StatelessWidget {
     final nom    = data['nom'] ?? '';
 
     try {
-      // 1. Enregistrer dans deleted_accounts
+      // 1. Enregistrer dans deleted_accounts (admin uniquement)
       if (email.isNotEmpty) {
         await FirebaseFirestore.instance
             .collection('deleted_accounts')
@@ -1234,7 +1397,11 @@ class _UserAdminCard extends StatelessWidget {
           'email': email,
           'prenom': prenom,
           'nom': nom,
+          'role': role,
           'deletedAt': FieldValue.serverTimestamp(),
+          'deletedByAdmin': true,          // ← marqueur admin
+          'deletedBySelf': false,
+          if (isBabysitter && avisList.isNotEmpty) 'derniereMoyenne': moyenneNote,
         });
       }
 
@@ -1288,6 +1455,8 @@ class _UserAdminCard extends StatelessWidget {
     final diploOk = data['diplomePdfStatut'] == 'validé';
     final cvOk = data['cvStatut'] == 'validé';
     final cniOk = data['cniStatut'] == 'validé';
+    final cnasOk = data['cnasStatut'] == 'validé';
+    final santeOk = data['santeStatut'] == 'validé';
 
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
@@ -1334,6 +1503,8 @@ class _UserAdminCard extends StatelessWidget {
                 if (diploOk) _DocBadge(label: 'Dip', color: Colors.green),
                 if (cvOk) ...[const SizedBox(width: 4), _DocBadge(label: 'CV', color: Colors.blue)],
                 if (cniOk) ...[const SizedBox(width: 4), _DocBadge(label: 'CNI', color: Colors.teal)],
+                if (cnasOk) ...[const SizedBox(width: 4), _DocBadge(label: 'CNAS', color: Colors.green)],
+                if (santeOk) ...[const SizedBox(width: 4), _DocBadge(label: 'Santé', color: Colors.purple)],
               ],
             ]),
           ])),
@@ -1377,153 +1548,6 @@ class _DocBadge extends StatelessWidget {
     decoration: BoxDecoration(color: color.withOpacity(0.15), borderRadius: BorderRadius.circular(20)),
     child: Text('✅$label', style: TextStyle(fontSize: 8, color: color, fontWeight: FontWeight.w700)),
   );
-}
-
-// ── Bouton confirmation autorisation travail nounou ──
-class _ConfirmNounouButton extends StatelessWidget {
-  final String uid;
-  final Map<String, dynamic> data;
-  const _ConfirmNounouButton({required this.uid, required this.data});
-
-  Future<void> _confirm(BuildContext context, bool autoriser) async {
-    await FirebaseFirestore.instance.collection('users').doc(uid).update({
-      'autoriseeATravail': autoriser,
-    });
-
-    // Notification à la nounou
-    final msg = autoriser
-        ? "🎉 Félicitations ! Votre profil a été vérifié et vous êtes autorisée à travailler sur NounouGo."
-        : "Votre demande d'autorisation a ete refusee. Contactez le support.";
-    await FirebaseFirestore.instance.collection('notifications').add({
-      'destinataireUid': uid,
-      'titre': autoriser ? '✅ Profil autorise' : '❌ Autorisation refusee',
-      'message': msg,
-      'type': autoriser ? 'autorisation_accordee' : 'autorisation_refusee',
-      'lu': false,
-      'createdAt': FieldValue.serverTimestamp(),
-    });
-
-    if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(autoriser
-            ? '✅ Nounou autorisée à travailler !'
-            : '❌ Autorisation refusée'),
-        backgroundColor: autoriser ? Colors.green : Colors.red,
-        behavior: SnackBarBehavior.floating,
-      ));
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final autorisee = data['autoriseeATravail'] ?? false;
-
-    return Column(children: [
-      // Statut actuel
-      Container(
-        width: double.infinity,
-        padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 14),
-        decoration: BoxDecoration(
-          color: autorisee
-              ? Colors.green.withOpacity(0.1)
-              : Colors.orange.withOpacity(0.1),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-              color: autorisee
-                  ? Colors.green.withOpacity(0.3)
-                  : Colors.orange.withOpacity(0.3)),
-        ),
-        child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-          Icon(
-            autorisee ? Icons.verified_rounded : Icons.pending_rounded,
-            color: autorisee ? Colors.green : Colors.orange,
-            size: 18,
-          ),
-          const SizedBox(width: 8),
-          Text(
-            autorisee
-                ? 'Nounou autorisée à travailler'
-                : "En attente d'autorisation",
-            style: TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.w700,
-              color: autorisee ? Colors.green : Colors.orange,
-            ),
-          ),
-        ]),
-      ),
-      const SizedBox(height: 10),
-
-      // Boutons action
-      Row(children: [
-        if (autorisee)
-          Expanded(
-            child: GestureDetector(
-              onTap: () => _confirm(context, false),
-              child: Container(
-                padding: const EdgeInsets.symmetric(vertical: 13),
-                decoration: BoxDecoration(
-                  color: Colors.red.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.red.withOpacity(0.4)),
-                ),
-                child: const Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                  Icon(Icons.block_rounded, color: Colors.red, size: 18),
-                  SizedBox(width: 8),
-                  Text('Révoquer autorisation',
-                      style: TextStyle(fontSize: 13, color: Colors.red, fontWeight: FontWeight.w800)),
-                ]),
-              ),
-            ),
-          )
-        else ...[
-          Expanded(
-            child: GestureDetector(
-              onTap: () => _confirm(context, false),
-              child: Container(
-                padding: const EdgeInsets.symmetric(vertical: 13),
-                decoration: BoxDecoration(
-                  color: Colors.red.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.red.withOpacity(0.3)),
-                ),
-                child: const Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                  Icon(Icons.close_rounded, color: Colors.red, size: 18),
-                  SizedBox(width: 6),
-                  Text('Refuser',
-                      style: TextStyle(fontSize: 13, color: Colors.red, fontWeight: FontWeight.w800)),
-                ]),
-              ),
-            ),
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            flex: 2,
-            child: GestureDetector(
-              onTap: () => _confirm(context, true),
-              child: Container(
-                padding: const EdgeInsets.symmetric(vertical: 13),
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                      colors: [Color(0xFF11998E), Color(0xFF38EF7D)]),
-                  borderRadius: BorderRadius.circular(12),
-                  boxShadow: [BoxShadow(
-                      color: Colors.green.withOpacity(0.3),
-                      blurRadius: 8, offset: const Offset(0, 3))],
-                ),
-                child: const Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                  Icon(Icons.check_circle_rounded, color: Colors.white, size: 18),
-                  SizedBox(width: 8),
-                  Text('✅ Confirmer & Autoriser',
-                      style: TextStyle(fontSize: 13, color: Colors.white, fontWeight: FontWeight.w800)),
-                ]),
-              ),
-            ),
-          ),
-        ],
-      ]),
-    ]);
-  }
 }
 
 // ════════════════════════════════════════════════
@@ -1587,7 +1611,7 @@ class _DeletedAccountsTab extends StatelessWidget {
                 Expanded(
                   child: Text(
                     'Ces comptes ont été supprimés. Appuyez sur "Libérer" '
-                    'pour permettre la réinscription avec le même email.',
+                        'pour permettre la réinscription avec le même email.',
                     style: TextStyle(
                         fontSize: 12, color: Colors.white60, height: 1.4),
                   ),
@@ -1627,7 +1651,7 @@ class _DeletedAccountCardState extends State<_DeletedAccountCard> {
                 color: Colors.white, fontWeight: FontWeight.w800)),
         content: Text(
           "L'email \"${widget.data['email']}\" sera libéré.\n"
-          "${widget.data['prenom']} ${widget.data['nom']} pourra créer un nouveau compte.",
+              "${widget.data['prenom']} ${widget.data['nom']} pourra créer un nouveau compte.",
           style: const TextStyle(color: Colors.white70, height: 1.5),
         ),
         actions: [
@@ -1666,16 +1690,18 @@ class _DeletedAccountCardState extends State<_DeletedAccountCard> {
 
   @override
   Widget build(BuildContext context) {
-    final email = widget.data['email'] ?? '';
+    final email  = widget.data['email']  ?? '';
     final prenom = widget.data['prenom'] ?? '';
-    final nom = widget.data['nom'] ?? '';
+    final nom    = widget.data['nom']    ?? '';
+    final role   = (widget.data['role']  ?? '').toString();
+    final deletedByAdmin = widget.data['deletedByAdmin'] == true;
+    final moyenneNote = (widget.data['derniereMoyenne'] ?? 0 as num).toDouble();
     final ts = widget.data['deletedAt'];
     String dateStr = '';
     if (ts != null) {
       try {
         final dt = (ts as dynamic).toDate() as DateTime;
-        dateStr = '${dt.day.toString().padLeft(2, '0')}/'
-            '${dt.month.toString().padLeft(2, '0')}/${dt.year}';
+        dateStr = '${dt.day.toString().padLeft(2, '0')}/${dt.month.toString().padLeft(2, '0')}/${dt.year}';
       } catch (_) {}
     }
 
@@ -1705,8 +1731,41 @@ class _DeletedAccountCardState extends State<_DeletedAccountCard> {
             Text(email,
                 style: const TextStyle(fontSize: 12, color: Colors.white54),
                 maxLines: 1, overflow: TextOverflow.ellipsis),
+            const SizedBox(height: 5),
+            Wrap(spacing: 5, runSpacing: 3, children: [
+              if (role.isNotEmpty) Container(
+                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                decoration: BoxDecoration(
+                  color: (role == 'Babysitter' ? AppColors.primaryPink : AppColors.buttonBlue).withOpacity(0.15),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Text(role, style: TextStyle(fontSize: 9, fontWeight: FontWeight.w700,
+                    color: role == 'Babysitter' ? AppColors.primaryPink : AppColors.buttonBlue)),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                decoration: BoxDecoration(
+                  color: (deletedByAdmin ? Colors.orange : Colors.grey).withOpacity(0.15),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Text(
+                  deletedByAdmin ? '🛡️ Par admin' : '👤 Auto-supprimé',
+                  style: TextStyle(fontSize: 9, fontWeight: FontWeight.w700,
+                      color: deletedByAdmin ? Colors.orange : Colors.grey),
+                ),
+              ),
+              if (role == 'Babysitter' && moyenneNote > 0) Container(
+                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                decoration: BoxDecoration(
+                  color: Colors.amber.withOpacity(0.12),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Text('⭐ ${moyenneNote.toStringAsFixed(1)}/5',
+                    style: const TextStyle(fontSize: 9, fontWeight: FontWeight.w700, color: Colors.amber)),
+              ),
+            ]),
             if (dateStr.isNotEmpty) ...[
-              const SizedBox(height: 3),
+              const SizedBox(height: 4),
               Text('Supprimé le $dateStr',
                   style: const TextStyle(fontSize: 11, color: Colors.white30)),
             ],
@@ -1715,31 +1774,31 @@ class _DeletedAccountCardState extends State<_DeletedAccountCard> {
         const SizedBox(width: 10),
         _loading
             ? const SizedBox(
-                width: 28, height: 28,
-                child: CircularProgressIndicator(
-                    strokeWidth: 2, color: Colors.green))
+            width: 28, height: 28,
+            child: CircularProgressIndicator(
+                strokeWidth: 2, color: Colors.green))
             : GestureDetector(
-                onTap: _libererEmail,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 14, vertical: 9),
-                  decoration: BoxDecoration(
-                    color: Colors.green.withOpacity(0.12),
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: Colors.green.withOpacity(0.4)),
-                  ),
-                  child: const Row(mainAxisSize: MainAxisSize.min, children: [
-                    Icon(Icons.lock_open_rounded,
-                        color: Colors.green, size: 14),
-                    SizedBox(width: 6),
-                    Text('Libérer',
-                        style: TextStyle(
-                            fontSize: 12,
-                            color: Colors.green,
-                            fontWeight: FontWeight.w800)),
-                  ]),
-                ),
-              ),
+          onTap: _libererEmail,
+          child: Container(
+            padding: const EdgeInsets.symmetric(
+                horizontal: 14, vertical: 9),
+            decoration: BoxDecoration(
+              color: Colors.green.withOpacity(0.12),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: Colors.green.withOpacity(0.4)),
+            ),
+            child: const Row(mainAxisSize: MainAxisSize.min, children: [
+              Icon(Icons.lock_open_rounded,
+                  color: Colors.green, size: 14),
+              SizedBox(width: 6),
+              Text('Libérer',
+                  style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.green,
+                      fontWeight: FontWeight.w800)),
+            ]),
+          ),
+        ),
       ]),
     );
   }

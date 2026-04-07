@@ -190,6 +190,7 @@ class _NounouProfileScreenState
     final experiences = List<String>.from(widget.nounouData['experiences'] ?? []);
     final ageGroups   = List<String>.from(widget.nounouData['ageGroups']   ?? []);
 
+
     final rawDispos = widget.nounouData['disponibilites'];
     Map<String, List<String>> disponibilitesMap = {};
     List<String> disponibilitesFlat = [];
@@ -425,6 +426,7 @@ class _NounouProfileScreenState
                           diplomes: diplomes,
                           competences: competences,
                           experiences: experiences,
+
                           cardDecoration: _cardDecoration(),
                         );
                       },
@@ -511,6 +513,7 @@ class _ProfileGrid extends StatelessWidget {
   final List<String> diplomes;
   final List<String> competences;
   final List<String> experiences;
+
   final BoxDecoration cardDecoration;
 
   const _ProfileGrid({
@@ -522,6 +525,7 @@ class _ProfileGrid extends StatelessWidget {
     required this.diplomes,
     required this.competences,
     required this.experiences,
+
     required this.cardDecoration,
   });
 

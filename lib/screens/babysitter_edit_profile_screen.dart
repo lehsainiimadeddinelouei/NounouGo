@@ -42,7 +42,18 @@ class _BabysitterEditProfileScreenState
   String? _cvName;
   String? _cniBase64;
   String? _cniName;
+  String? _cnasBase64;
+  String? _cnasName;
+  String? _santeBase64;
+  String? _santeName;
   bool _loadingDoc = false;
+
+  // Statuts réactifs (mis à jour localement après sauvegarde)
+  late String _diploStatut;
+  late String _cvStatut;
+  late String _cniStatut;
+  late String _cnasStatut;
+  late String _santeStatut;
 
   static const List<String> _jours = [
     'Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi', 'Dimanche',
@@ -88,6 +99,17 @@ class _BabysitterEditProfileScreenState
     _cvName           = d['cvName']           as String?;
     _cniBase64        = d['cniBase64']        as String?;
     _cniName          = d['cniName']          as String?;
+    // FIX BUG 1 : cnas et santé étaient oubliés → affichaient toujours "Choisir un fichier"
+    _cnasBase64       = d['cnasBase64']       as String?;
+    _cnasName         = d['cnasName']         as String?;
+    _santeBase64      = d['santeBase64']      as String?;
+    _santeName        = (d['santeNom'] ?? d['santeName']) as String?;
+    // FIX BUG 4 : statuts stockés en variables réactives
+    _diploStatut  = d['diplomePdfStatut'] as String? ?? 'non_soumis';
+    _cvStatut     = d['cvStatut']         as String? ?? 'non_soumis';
+    _cniStatut    = d['cniStatut']        as String? ?? 'non_soumis';
+    _cnasStatut   = d['cnasStatut']       as String? ?? 'non_soumis';
+    _santeStatut  = d['santeStatut']      as String? ?? 'non_soumis';
   }
 
   @override
@@ -180,9 +202,15 @@ class _BabysitterEditProfileScreenState
           } else if (type == 'cv') {
             _cvBase64 = b64;
             _cvName   = name;
-          } else {
+          } else if (type == 'cni') {
             _cniBase64 = b64;
             _cniName   = name;
+          } else if (type == 'cnas') {
+            _cnasBase64 = b64;
+            _cnasName   = name;
+          } else {
+            _santeBase64 = b64;
+            _santeName   = name;
           }
         });
       }
@@ -197,34 +225,97 @@ class _BabysitterEditProfileScreenState
       final doc      = await _db.collection('users').doc(_uid).get();
       final existing = doc.data() ?? {};
 
-      final diploStatut = _diplomePdfBase64 != existing['diplomePdfBase64']
-          ? 'en_attente'
-          : (existing['diplomePdfStatut'] ?? 'non_soumis');
-      final cvStatut = _cvBase64 != existing['cvBase64']
-          ? 'en_attente'
-          : (existing['cvStatut'] ?? 'non_soumis');
-      final cniStatut = _cniBase64 != existing['cniBase64']
-          ? 'en_attente'
-          : (existing['cniStatut'] ?? 'non_soumis');
+      // FIX BUG 3 : comparaison correcte — on vérifie si le fichier a changé
+      // en comparant le nom (évite de comparer des blobs base64 potentiellement null)
+      final bool diploChanged = _diplomePdfBase64 != null &&
+          _diplomePdfBase64 != existing['diplomePdfBase64'];
+      final bool cvChanged = _cvBase64 != null &&
+          _cvBase64 != existing['cvBase64'];
+      final bool cniChanged = _cniBase64 != null &&
+          _cniBase64 != existing['cniBase64'];
+      final bool cnasChanged = _cnasBase64 != null &&
+          _cnasBase64 != existing['cnasBase64'];
+      final bool santeChanged = _santeBase64 != null &&
+          _santeBase64 != existing['santeBase64'];
 
+      final newDiploStatut  = diploChanged  ? 'en_attente' : (existing['diplomePdfStatut'] ?? 'non_soumis');
+      final newCvStatut     = cvChanged     ? 'en_attente' : (existing['cvStatut']         ?? 'non_soumis');
+      final newCniStatut    = cniChanged    ? 'en_attente' : (existing['cniStatut']         ?? 'non_soumis');
+      final newCnasStatut   = cnasChanged   ? 'en_attente' : (existing['cnasStatut']        ?? 'non_soumis');
+      final newSanteStatut  = santeChanged  ? 'en_attente' : (existing['santeStatut']       ?? 'non_soumis');
+
+      // ── 1. Mise à jour du document principal (sans les blobs de documents) ──
       await _db.collection('users').doc(_uid).update({
         'bio':            _bioController.text.trim(),
         'diplomes':       _diplomes,
         'competences':    _competences,
-        // Serialize Map<String, Set<String>> → Map<String, List<String>>
         'disponibilites': _disponibilites.map(
                 (jour, periodes) => MapEntry(jour, periodes.toList())),
         'ageGroups':      _ageGroups,
-        if (_photoBase64 != null)      'photoBase64':      _photoBase64,
+        if (_photoBase64 != null) 'photoBase64': _photoBase64,
+        // Garder les champs base64 dans le doc principal pour lecture rapide du profil
         if (_diplomePdfBase64 != null) 'diplomePdfBase64': _diplomePdfBase64,
         if (_diplomePdfName   != null) 'diplomePdfName':   _diplomePdfName,
-        'diplomePdfStatut': diploStatut,
+        'diplomePdfStatut': newDiploStatut,
         if (_cvBase64 != null) 'cvBase64': _cvBase64,
         if (_cvName   != null) 'cvName':   _cvName,
-        'cvStatut':  cvStatut,
+        'cvStatut': newCvStatut,
         if (_cniBase64 != null) 'cniBase64': _cniBase64,
         if (_cniName   != null) 'cniName':   _cniName,
-        'cniStatut': cniStatut,
+        'cniStatut': newCniStatut,
+        if (_cnasBase64 != null) 'cnasBase64': _cnasBase64,
+        if (_cnasName   != null) 'cnasName':   _cnasName,
+        'cnasStatut': newCnasStatut,
+        if (_santeBase64 != null) 'santeBase64': _santeBase64,
+        if (_santeName   != null) 'santeNom':    _santeName,
+        'santeStatut': newSanteStatut,
+      });
+
+      // FIX BUG 2 : écriture dans la sous-collection documents lue par l'admin
+      final docsRef = _db.collection('users').doc(_uid).collection('documents');
+
+      Future<void> upsertDoc(String type, String? base64, String? name, String statut, bool changed) async {
+        if (base64 == null) return; // pas de fichier, rien à écrire
+        if (!changed) {
+          // document inchangé : mettre à jour seulement le statut si nécessaire
+          final existing = await docsRef.doc(type).get();
+          if (!existing.exists) {
+            // Premier envoi : créer l'entrée dans la sous-collection
+            await docsRef.doc(type).set({
+              'type':      type,
+              'base64':    base64,
+              'nom':       name ?? type,
+              'statut':    statut,
+              'updatedAt': FieldValue.serverTimestamp(),
+            });
+          }
+          return;
+        }
+        // Document modifié : remettre en_attente pour validation admin
+        await docsRef.doc(type).set({
+          'type':      type,
+          'base64':    base64,
+          'nom':       name ?? type,
+          'statut':    'en_attente',
+          'updatedAt': FieldValue.serverTimestamp(),
+        });
+      }
+
+      await Future.wait([
+        upsertDoc('diplome', _diplomePdfBase64, _diplomePdfName, newDiploStatut, diploChanged),
+        upsertDoc('cv',      _cvBase64,         _cvName,         newCvStatut,   cvChanged),
+        upsertDoc('cni',     _cniBase64,         _cniName,        newCniStatut,  cniChanged),
+        upsertDoc('cnas',    _cnasBase64,         _cnasName,       newCnasStatut, cnasChanged),
+        upsertDoc('sante',   _santeBase64,        _santeName,      newSanteStatut,santeChanged),
+      ]);
+
+      // FIX BUG 4 : mettre à jour les statuts réactifs dans l'UI
+      setState(() {
+        _diploStatut  = newDiploStatut;
+        _cvStatut     = newCvStatut;
+        _cniStatut    = newCniStatut;
+        _cnasStatut   = newCnasStatut;
+        _santeStatut  = newSanteStatut;
       });
 
       if (mounted) {
@@ -736,7 +827,7 @@ class _BabysitterEditProfileScreenState
         'icon':     Icons.school_rounded,
         'color':    AppColors.primaryPink,
         'name':     _diplomePdfName,
-        'statut':   widget.data['diplomePdfStatut'] ?? 'non_soumis',
+        'statut':   _diploStatut,   // FIX BUG 4 : variable réactive
       },
       {
         'type':     'cv',
@@ -745,7 +836,7 @@ class _BabysitterEditProfileScreenState
         'icon':     Icons.description_rounded,
         'color':    AppColors.buttonBlue,
         'name':     _cvName,
-        'statut':   widget.data['cvStatut'] ?? 'non_soumis',
+        'statut':   _cvStatut,      // FIX BUG 4
       },
       {
         'type':     'cni',
@@ -754,7 +845,25 @@ class _BabysitterEditProfileScreenState
         'icon':     Icons.badge_rounded,
         'color':    Colors.teal,
         'name':     _cniName,
-        'statut':   widget.data['cniStatut'] ?? 'non_soumis',
+        'statut':   _cniStatut,     // FIX BUG 4
+      },
+      {
+        'type':     'cnas',
+        'title':    'Attestation CNAS',
+        'subtitle': 'Attestation de sécurité sociale (PDF)',
+        'icon':     Icons.health_and_safety_rounded,
+        'color':    Colors.green,
+        'name':     _cnasName,
+        'statut':   _cnasStatut,    // FIX BUG 4
+      },
+      {
+        'type':     'sante',
+        'title':    'Certificat santé mentale',
+        'subtitle': 'Délivré par un médecin agréé (PDF)',
+        'icon':     Icons.psychology_rounded,
+        'color':    Colors.purple,
+        'name':     _santeName,
+        'statut':   _santeStatut,   // FIX BUG 4
       },
     ];
 
@@ -799,9 +908,15 @@ class _BabysitterEditProfileScreenState
             } else if (doc['type'] == 'cv') {
               _cvBase64 = null;
               _cvName   = null;
-            } else {
+            } else if (doc['type'] == 'cni') {
               _cniBase64 = null;
               _cniName   = null;
+            } else if (doc['type'] == 'cnas') {
+              _cnasBase64 = null;
+              _cnasName   = null;
+            } else {
+              _santeBase64 = null;
+              _santeName   = null;
             }
           }),
         ),

@@ -11,6 +11,7 @@ import 'payment_screen.dart';
 import 'historique_screen.dart';
 import 'babysitter_edit_profile_screen.dart';
 import 'notifications_screen.dart';
+import 'chatbot_screen.dart';
 
 // ─────────────────────────────────────────────────────────────
 // BABYSITTER HOME SCREEN  (premier écran après connexion)
@@ -180,7 +181,8 @@ class _BabysitterHomeScreenState extends State<BabysitterHomeScreen> {
                         .doc(uid)
                         .delete();
                     await user.delete();
-                    if (ctx.mounted) Navigator.of(ctx).pop();
+                    // Fermer le dialog AVANT que les streams ne se rechargent
+                    if (ctx.mounted) Navigator.of(ctx).pop(true);
                   } on FirebaseAuthException catch (e) {
                     set(() {
                       isLoading    = false;
@@ -209,8 +211,9 @@ class _BabysitterHomeScreenState extends State<BabysitterHomeScreen> {
         ),
       ),
     );
-    passwordCtrl.dispose();
+    // Si suppression réussie, naviguer immédiatement vers RoleSelectionScreen
     if (_auth.currentUser == null && mounted) {
+      passwordCtrl.dispose();
       Navigator.pushAndRemoveUntil(
           context,
           PageRouteBuilder(
@@ -219,7 +222,9 @@ class _BabysitterHomeScreenState extends State<BabysitterHomeScreen> {
                 FadeTransition(opacity: anim, child: child),
           ),
               (route) => false);
+      return;
     }
+    passwordCtrl.dispose();
   }
 
   @override
@@ -262,6 +267,8 @@ class _BabysitterHomeScreenState extends State<BabysitterHomeScreen> {
 
     return Scaffold(
       body: IndexedStack(index: _currentIndex, children: screens),
+      floatingActionButton: _ChatFab(),
+      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
       bottomNavigationBar: _BottomNav(
         currentIndex: _currentIndex,
         uid: uid,
@@ -634,8 +641,10 @@ class _HomeTab extends StatelessWidget {
                                     .doc(uid)
                                     .snapshots(),
                                 builder: (_, snap) {
-                                  final prenom =
-                                  (snap.data?.get('prenom') ?? '') as String;
+                                  // Guard: document may not exist (deleted account)
+                                  final prenom = (snap.hasData && snap.data!.exists)
+                                      ? ((snap.data!.get('prenom') ?? '') as String)
+                                      : '';
                                   return Text(
                                     prenom.isNotEmpty ? prenom : 'Babysitter',
                                     style: const TextStyle(
@@ -1457,6 +1466,16 @@ class _ProfilTabState extends State<_ProfilTab> {
     final autorisee = (data['autoriseeATravail'] ?? false) ||
         (data['compteActif'] ?? false);
 
+    // Vérifie si au moins un document est refusé
+    final docStatuts = [
+      data['diplomePdfStatut'] as String? ?? '',
+      data['cvStatut']         as String? ?? '',
+      data['cniStatut']        as String? ?? '',
+      data['cnasStatut']       as String? ?? '',
+      data['santeStatut']      as String? ?? '',
+    ];
+    final hasRefusedDoc = docStatuts.any((s) => s == 'refusé');
+
     // Recompute initiales from local data in case name was changed
     final prenom = data['prenom'] ?? '';
     final nom    = data['nom']    ?? '';
@@ -1632,31 +1651,45 @@ class _ProfilTabState extends State<_ProfilTab> {
                 decoration: BoxDecoration(
                   color: autorisee
                       ? Colors.green.withOpacity(0.08)
+                      : hasRefusedDoc
+                      ? Colors.red.withOpacity(0.08)
                       : Colors.orange.withOpacity(0.08),
                   borderRadius: BorderRadius.circular(16),
                   border: Border.all(
                       color: autorisee
                           ? Colors.green.withOpacity(0.3)
+                          : hasRefusedDoc
+                          ? Colors.red.withOpacity(0.3)
                           : Colors.orange.withOpacity(0.3)),
                 ),
                 child: Row(children: [
                   Icon(
                       autorisee
                           ? Icons.verified_rounded
+                          : hasRefusedDoc
+                          ? Icons.cancel_rounded
                           : Icons.pending_rounded,
-                      color: autorisee ? Colors.green : Colors.orange,
+                      color: autorisee
+                          ? Colors.green
+                          : hasRefusedDoc
+                          ? Colors.red
+                          : Colors.orange,
                       size: 20),
                   const SizedBox(width: 10),
                   Expanded(
                     child: Text(
                       autorisee
                           ? '✅ Profil vérifié — Vous êtes autorisée à travailler'
+                          : hasRefusedDoc
+                          ? '❌ Votre compte n\'est pas autorisé. Veuillez charger de nouveaux documents pour les éléments refusés.'
                           : "⏳ En attente de validation par l'administrateur",
                       style: TextStyle(
                           fontSize: 13,
                           fontWeight: FontWeight.w700,
                           color: autorisee
                               ? Colors.green.shade700
+                              : hasRefusedDoc
+                              ? Colors.red.shade700
                               : Colors.orange.shade700),
                     ),
                   ),
@@ -1932,8 +1965,7 @@ class _ProfilTabState extends State<_ProfilTab> {
                         _DocStatusRow(
                           icon: Icons.school_rounded,
                           title: 'Diplôme',
-                          statut: data['diplomePdfStatut'] as String? ??
-                              'non_soumis',
+                          statut: data['diplomePdfStatut'] as String? ?? 'non_soumis',
                           fileName: data['diplomePdfName'] as String?,
                           color: AppColors.primaryPink,
                         ),
@@ -1948,10 +1980,26 @@ class _ProfilTabState extends State<_ProfilTab> {
                         const _Divider(),
                         _DocStatusRow(
                           icon: Icons.badge_rounded,
-                          title: "Carte d'identité",
+                          title: "Carte d'identité (CNI)",
                           statut: data['cniStatut'] as String? ?? 'non_soumis',
                           fileName: data['cniName'] as String?,
                           color: Colors.teal,
+                        ),
+                        const _Divider(),
+                        _DocStatusRow(
+                          icon: Icons.health_and_safety_rounded,
+                          title: 'Attestation CNAS',
+                          statut: data['cnasStatut'] as String? ?? 'non_soumis',
+                          fileName: data['cnasName'] as String?,
+                          color: Colors.green,
+                        ),
+                        const _Divider(),
+                        _DocStatusRow(
+                          icon: Icons.psychology_rounded,
+                          title: 'Certificat santé mentale',
+                          statut: data['santeStatut'] as String? ?? 'non_soumis',
+                          fileName: data['santeNom'] as String?,
+                          color: Colors.purple,
                         ),
                       ]),
                     ),
@@ -2411,6 +2459,58 @@ class _EmailVerifBannerState extends State<_EmailVerifBanner> {
           ),
         ]),
       ]),
+    );
+  }
+}
+
+
+// ─────────────────────────────────────────────────────────────
+// BOUTON FLOTTANT CHATBOT
+// ─────────────────────────────────────────────────────────────
+class _ChatFab extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: () => Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => const ChatbotScreen()),
+      ),
+      child: Container(
+        width: 58,
+        height: 58,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          gradient: const LinearGradient(
+            colors: [Color(0xFFFF8FAB), Color(0xFFC8384E)],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: AppColors.primaryPink.withOpacity(0.5),
+              blurRadius: 20,
+              offset: const Offset(0, 6),
+            ),
+          ],
+        ),
+        child: Stack(
+          children: [
+            const Center(child: Text('👶', style: TextStyle(fontSize: 26))),
+            Positioned(
+              top: 8, right: 8,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF1A2545),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: const Text('IA',
+                    style: TextStyle(color: Colors.white, fontSize: 8, fontWeight: FontWeight.w900)),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

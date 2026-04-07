@@ -9,6 +9,7 @@ import 'conversations_screen.dart';
 import 'payment_screen.dart';
 import 'historique_screen.dart';
 import 'notifications_screen.dart';
+import 'chatbot_screen.dart';
 
 class ParentHomeScreen extends StatefulWidget {
   const ParentHomeScreen({super.key});
@@ -39,6 +40,8 @@ class _ParentHomeScreenState extends State<ParentHomeScreen> {
 
     return Scaffold(
       body: IndexedStack(index: _currentIndex, children: _screens),
+      floatingActionButton: _ChatFab(),
+      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
       bottomNavigationBar: _BottomNav(
         currentIndex: _currentIndex,
         uid: uid ?? '',
@@ -326,7 +329,9 @@ class _HomeTab extends StatelessWidget {
                                 .doc(uid)
                                 .snapshots(),
                             builder: (_, snap) {
-                              final prenom = snap.data?.get('prenom') ?? '';
+                              final prenom = (snap.hasData && snap.data!.exists)
+                                  ? ((snap.data!.get('prenom') ?? '') as String)
+                                  : '';
                               return Text(
                                 prenom.isNotEmpty ? prenom : 'Parent',
                                 style: const TextStyle(
@@ -1188,6 +1193,57 @@ class _QuickCard extends StatelessWidget {
               textAlign: TextAlign.center,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+// BOUTON FLOTTANT CHATBOT
+// ─────────────────────────────────────────────────────────────
+class _ChatFab extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: () => Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => const ChatbotScreen()),
+      ),
+      child: Container(
+        width: 58,
+        height: 58,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          gradient: const LinearGradient(
+            colors: [Color(0xFFFF8FAB), Color(0xFFC8384E)],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: AppColors.primaryPink.withOpacity(0.5),
+              blurRadius: 20,
+              offset: const Offset(0, 6),
+            ),
+          ],
+        ),
+        child: Stack(
+          children: [
+            const Center(child: Text('👶', style: TextStyle(fontSize: 26))),
+            Positioned(
+              top: 8, right: 8,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF1A2545),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: const Text('IA',
+                  style: TextStyle(color: Colors.white, fontSize: 8, fontWeight: FontWeight.w900)),
+              ),
             ),
           ],
         ),

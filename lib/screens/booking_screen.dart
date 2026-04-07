@@ -179,7 +179,16 @@ class _BookingScreenState extends State<BookingScreen>
     final prenom = widget.nounouData['prenom'] ?? '';
     final nom = widget.nounouData['nom'] ?? '';
     final prix = widget.nounouData['prixHeure'];
-    final disponibilites = List<String>.from(widget.nounouData['disponibilites'] ?? []);
+    final disponibilitesRaw = widget.nounouData['disponibilites'];
+    List<String> disponibilites = [];
+    if (disponibilitesRaw is List) {
+      disponibilites = List<String>.from(disponibilitesRaw);
+    } else if (disponibilitesRaw is Map) {
+      for (final slots in disponibilitesRaw.values) {
+        if (slots is List) disponibilites.addAll(slots.cast<String>());
+      }
+      disponibilites = disponibilites.toSet().toList();
+    }
 
     return Scaffold(
       body: Container(
@@ -197,8 +206,8 @@ class _BookingScreenState extends State<BookingScreen>
               leading: GestureDetector(
                 onTap: () => Navigator.pop(context),
                 child: Container(margin: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(color: Colors.white.withOpacity(0.9), shape: BoxShape.circle),
-                  child: const Icon(Icons.arrow_back_ios_new, size: 16, color: AppColors.textDark)),
+                    decoration: BoxDecoration(color: Colors.white.withOpacity(0.9), shape: BoxShape.circle),
+                    child: const Icon(Icons.arrow_back_ios_new, size: 16, color: AppColors.textDark)),
               ),
               flexibleSpace: FlexibleSpaceBar(
                 background: Container(
@@ -259,8 +268,8 @@ class _BookingScreenState extends State<BookingScreen>
                       ),
                       child: Row(children: [
                         Container(width: 44, height: 44,
-                          decoration: BoxDecoration(color: AppColors.primaryPink.withOpacity(0.1), borderRadius: BorderRadius.circular(12)),
-                          child: const Icon(Icons.access_time_rounded, color: AppColors.primaryPink, size: 22)),
+                            decoration: BoxDecoration(color: AppColors.primaryPink.withOpacity(0.1), borderRadius: BorderRadius.circular(12)),
+                            child: const Icon(Icons.access_time_rounded, color: AppColors.primaryPink, size: 22)),
                         const SizedBox(width: 14),
                         Expanded(child: Text(
                           _selectedTime != null
@@ -424,7 +433,7 @@ class _CalendarWidgetState extends State<_CalendarWidget> {
 
   static const _jours = ['L', 'M', 'M', 'J', 'V', 'S', 'D'];
   static const _mois = ['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin',
-      'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'];
+    'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'];
 
   @override
   Widget build(BuildContext context) {
@@ -442,15 +451,15 @@ class _CalendarWidgetState extends State<_CalendarWidget> {
         // Header mois
         Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
           GestureDetector(onTap: _prevMonth,
-            child: Container(width: 36, height: 36,
-              decoration: BoxDecoration(color: AppColors.lightPink, borderRadius: BorderRadius.circular(10)),
-              child: const Icon(Icons.chevron_left_rounded, color: AppColors.primaryPink))),
+              child: Container(width: 36, height: 36,
+                  decoration: BoxDecoration(color: AppColors.lightPink, borderRadius: BorderRadius.circular(10)),
+                  child: const Icon(Icons.chevron_left_rounded, color: AppColors.primaryPink))),
           Text('${_mois[_displayedMonth.month - 1]} ${_displayedMonth.year}',
               style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: AppColors.textDark)),
           GestureDetector(onTap: _nextMonth,
-            child: Container(width: 36, height: 36,
-              decoration: BoxDecoration(color: AppColors.lightPink, borderRadius: BorderRadius.circular(10)),
-              child: const Icon(Icons.chevron_right_rounded, color: AppColors.primaryPink))),
+              child: Container(width: 36, height: 36,
+                  decoration: BoxDecoration(color: AppColors.lightPink, borderRadius: BorderRadius.circular(10)),
+                  child: const Icon(Icons.chevron_right_rounded, color: AppColors.primaryPink))),
         ]),
         const SizedBox(height: 16),
         // Jours de la semaine

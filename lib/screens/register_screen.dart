@@ -38,6 +38,8 @@ class _RegisterScreenState extends State<RegisterScreen>
   String? _diplomeB64; String? _diplomeNom;
   String? _cvB64;      String? _cvNom;
   String? _cniB64;     String? _cniNom;
+  String? _cnasB64;    String? _cnasNom;
+  String? _santeB64;   String? _santeNom;
 
   late AnimationController _animCtrl;
   late Animation<double>   _fadeAnim;
@@ -96,6 +98,8 @@ class _RegisterScreenState extends State<RegisterScreen>
         if (type == 'diplome') { _diplomeB64 = b64; _diplomeNom = f.name; }
         if (type == 'cv')      { _cvB64 = b64;      _cvNom = f.name; }
         if (type == 'cni')     { _cniB64 = b64;      _cniNom = f.name; }
+        if (type == 'cnas')    { _cnasB64 = b64;     _cnasNom = f.name; }
+        if (type == 'sante')   { _santeB64 = b64;    _santeNom = f.name; }
       });
     } catch (e) {
       _snack('Erreur: $e');
@@ -123,6 +127,8 @@ class _RegisterScreenState extends State<RegisterScreen>
       if (_diplomeB64 == null) { _snack('📄 Le diplôme est obligatoire.'); return; }
       if (_cvB64 == null)      { _snack("📄 Le CV est obligatoire."); return; }
       if (_cniB64 == null)     { _snack("🪪 La carte d'identité est obligatoire."); return; }
+      if (_cnasB64 == null)    { _snack('📄 La CNAS est obligatoire.'); return; }
+      if (_santeB64 == null)   { _snack('📄 Le certificat de bonne santé mentale est obligatoire.'); return; }
     }
 
     setState(() => _isLoading = true);
@@ -196,6 +202,34 @@ class _RegisterScreenState extends State<RegisterScreen>
           throw Exception('Échec CNI (${(_cniB64!.length / 1024).toStringAsFixed(0)} KB): $e');
         }
 
+        // CNAS
+        try {
+          await docsRef.doc('cnas').set({
+            'base64': _cnasB64,
+            'name': _cnasNom,
+            'statut': 'en_attente',
+            'type': 'cnas',
+            'uploadedAt': FieldValue.serverTimestamp(),
+          });
+          _snack('✅ CNAS envoyée (${(_cnasB64!.length / 1024).toStringAsFixed(0)} KB)');
+        } catch (e) {
+          throw Exception('Échec CNAS (${(_cnasB64!.length / 1024).toStringAsFixed(0)} KB): $e');
+        }
+
+        // Certificat santé mentale
+        try {
+          await docsRef.doc('sante').set({
+            'base64': _santeB64,
+            'name': _santeNom,
+            'statut': 'en_attente',
+            'type': 'sante',
+            'uploadedAt': FieldValue.serverTimestamp(),
+          });
+          _snack('✅ Certificat santé envoyé (${(_santeB64!.length / 1024).toStringAsFixed(0)} KB)');
+        } catch (e) {
+          throw Exception('Échec certificat santé (${(_santeB64!.length / 1024).toStringAsFixed(0)} KB): $e');
+        }
+
         // Mettre à jour le doc principal
         await FirebaseFirestore.instance.collection('users').doc(uid).update({
           'diplomePdfName': _diplomeNom,
@@ -204,6 +238,10 @@ class _RegisterScreenState extends State<RegisterScreen>
           'cvStatut': 'en_attente',
           'cniName': _cniNom,
           'cniStatut': 'en_attente',
+          'cnasName': _cnasNom,
+          'cnasStatut': 'en_attente',
+          'santeNom': _santeNom,
+          'santeStatut': 'en_attente',
           'hasDocuments': true,
         });
 
@@ -254,18 +292,18 @@ class _RegisterScreenState extends State<RegisterScreen>
 
               // ── Bouton retour ──
               Align(alignment: Alignment.centerLeft,
-                child: GestureDetector(onTap: () => Navigator.pop(context),
-                  child: Container(width: 40, height: 40,
-                    decoration: BoxDecoration(color: Colors.white,
-                        borderRadius: BorderRadius.circular(12),
-                        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.06), blurRadius: 10, offset: const Offset(0, 4))]),
-                    child: const Icon(Icons.arrow_back_ios_new, size: 16, color: AppColors.textDark)))),
+                  child: GestureDetector(onTap: () => Navigator.pop(context),
+                      child: Container(width: 40, height: 40,
+                          decoration: BoxDecoration(color: Colors.white,
+                              borderRadius: BorderRadius.circular(12),
+                              boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.06), blurRadius: 10, offset: const Offset(0, 4))]),
+                          child: const Icon(Icons.arrow_back_ios_new, size: 16, color: AppColors.textDark)))),
               const SizedBox(height: 28),
 
               // ── Titre ──
               const Text('Créer un compte',
-                style: TextStyle(fontSize: 28, fontWeight: FontWeight.w800, color: AppColors.textDark, letterSpacing: -0.5),
-                textAlign: TextAlign.center),
+                  style: TextStyle(fontSize: 28, fontWeight: FontWeight.w800, color: AppColors.textDark, letterSpacing: -0.5),
+                  textAlign: TextAlign.center),
               const SizedBox(height: 6),
               Center(child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
@@ -310,8 +348,8 @@ class _RegisterScreenState extends State<RegisterScreen>
                     Icon(Icons.info_outline_rounded, color: accent, size: 16),
                     const SizedBox(width: 8),
                     Expanded(child: Text(
-                      "Ces 3 documents sont transmis directement à l'administrateur pour validation. "
-                      "Sans validation, vous ne pourrez pas travailler. Formats acceptés: PDF, JPG, PNG.",
+                      "Ces 5 documents sont transmis directement à l'administrateur pour validation. "
+                          "Sans validation, vous ne pourrez pas travailler. Formats acceptés: PDF, JPG, PNG.",
                       style: TextStyle(fontSize: 12, color: accent, height: 1.5),
                     )),
                   ]),
@@ -341,6 +379,22 @@ class _RegisterScreenState extends State<RegisterScreen>
                     fileName: _cniNom,
                     onTap: () => _pickDoc('cni'),
                   ),
+                  const SizedBox(height: 12),
+                  _DocPicker(
+                    label: 'Attestation CNAS',
+                    icon: Icons.health_and_safety_rounded,
+                    color: Colors.green,
+                    fileName: _cnasNom,
+                    onTap: () => _pickDoc('cnas'),
+                  ),
+                  const SizedBox(height: 12),
+                  _DocPicker(
+                    label: 'Certificat mentale',
+                    icon: Icons.psychology_rounded,
+                    color: Colors.purple,
+                    fileName: _santeNom,
+                    onTap: () => _pickDoc('sante'),
+                  ),
                 ])),
                 const SizedBox(height: 20),
               ],
@@ -353,16 +407,16 @@ class _RegisterScreenState extends State<RegisterScreen>
                   controller: _passwordController, hintText: 'Mot de passe',
                   prefixIcon: Icons.lock_outline_rounded, obscureText: _obscurePass, accentColor: accent,
                   suffixIcon: GestureDetector(
-                    onTap: () => setState(() => _obscurePass = !_obscurePass),
-                    child: Icon(_obscurePass ? Icons.visibility_outlined : Icons.visibility_off_outlined, color: AppColors.primaryPink, size: 20)),
+                      onTap: () => setState(() => _obscurePass = !_obscurePass),
+                      child: Icon(_obscurePass ? Icons.visibility_outlined : Icons.visibility_off_outlined, color: AppColors.primaryPink, size: 20)),
                 ),
                 const SizedBox(height: 14),
                 CustomTextField(
                   controller: _confirmPasswordController, hintText: 'Confirmer le mot de passe',
                   prefixIcon: Icons.lock_outline_rounded, obscureText: _obscureConfirm, accentColor: accent,
                   suffixIcon: GestureDetector(
-                    onTap: () => setState(() => _obscureConfirm = !_obscureConfirm),
-                    child: Icon(_obscureConfirm ? Icons.visibility_outlined : Icons.visibility_off_outlined, color: AppColors.primaryPink, size: 20)),
+                      onTap: () => setState(() => _obscureConfirm = !_obscureConfirm),
+                      child: Icon(_obscureConfirm ? Icons.visibility_outlined : Icons.visibility_off_outlined, color: AppColors.primaryPink, size: 20)),
                 ),
                 const SizedBox(height: 10),
                 _PasswordStrengthIndicator(controller: _passwordController, accentColor: accent),
@@ -458,24 +512,24 @@ class _DocPicker extends StatelessWidget {
         ),
         child: Row(children: [
           Container(width: 40, height: 40,
-            decoration: BoxDecoration(color: color.withOpacity(0.12), borderRadius: BorderRadius.circular(11)),
-            child: Icon(icon, color: color, size: 20)),
+              decoration: BoxDecoration(color: color.withOpacity(0.12), borderRadius: BorderRadius.circular(11)),
+              child: Icon(icon, color: color, size: 20)),
           const SizedBox(width: 12),
           Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Row(children: [
               Expanded(child: Text(label,
-                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: done ? color : AppColors.textDark),
-                maxLines: 1, overflow: TextOverflow.ellipsis)),
+                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: done ? color : AppColors.textDark),
+                  maxLines: 1, overflow: TextOverflow.ellipsis)),
               Text(' *', style: TextStyle(fontSize: 13, color: Colors.red.shade400, fontWeight: FontWeight.w800)),
             ]),
             const SizedBox(height: 3),
             Text(done ? '✓  $fileName' : 'Appuyer pour sélectionner...',
-              style: TextStyle(fontSize: 11, color: done ? color.withOpacity(0.75) : AppColors.textGrey),
-              maxLines: 1, overflow: TextOverflow.ellipsis),
+                style: TextStyle(fontSize: 11, color: done ? color.withOpacity(0.75) : AppColors.textGrey),
+                maxLines: 1, overflow: TextOverflow.ellipsis),
           ])),
           const SizedBox(width: 10),
           Icon(done ? Icons.check_circle_rounded : Icons.upload_file_rounded,
-            color: done ? color : Colors.orange.shade300, size: 24),
+              color: done ? color : Colors.orange.shade300, size: 24),
         ]),
       ),
     );

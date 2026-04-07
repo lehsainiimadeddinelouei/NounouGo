@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:nounougo/screens/splash_screen.dart';
 import 'theme/app_theme.dart';
 import 'screens/role_selection_screen.dart';
 import 'firebase_options.dart';
@@ -42,7 +43,7 @@ class NounouGoApp extends StatelessWidget {
         Locale('fr', 'FR'),
         Locale('en', 'US'),
       ],
-      home: const RoleSelectionScreen(),
+      home: const SplashScreen(), // ← remplace RoleSelectionScreen
     );
   }
 }

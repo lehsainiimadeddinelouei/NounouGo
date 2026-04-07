@@ -22,14 +22,14 @@ class _SearchNounousScreenState extends State<SearchNounousScreen>
   // Filtres
   String? _selectedVille;
   String? _selectedDisponibilite;
-  String? _selectedTranche;
   double? _maxPrix;
 
   late AnimationController _animController;
   late Animation<double> _fadeAnim;
 
-  final List<String> _disponibilites = ['Matin', 'Après-midi', 'Soir', 'Week-end', 'Temps plein'];
-  final List<String> _tranches = ['0-1 an', '1-3 ans', '3-6 ans', '6-12 ans', '12+ ans'];
+  List<String> _disponibilitesDynamiques = [];
+  List<String> _tranchesDynamiques = [];
+  String? _selectedTranche;
 
   @override
   void initState() {
@@ -64,10 +64,45 @@ class _SearchNounousScreenState extends State<SearchNounousScreen>
           .where((n) => !(n['bloque'] ?? false) && ((n['compteActif'] ?? false) || (n['autoriseeATravail'] ?? false)))
           .toList();
 
+      // Extraire toutes les disponibilités uniques des nounous
+      final Set<String> allDispos = {};
+      for (final n in list) {
+        final raw = n['disponibilites'];
+        if (raw is Map) {
+          for (final slots in raw.values) {
+            if (slots is List) {
+              for (final s in slots) {
+                if (s.toString().isNotEmpty) allDispos.add(s.toString());
+              }
+            }
+          }
+        } else if (raw is List) {
+          for (final s in raw) {
+            if (s.toString().isNotEmpty) allDispos.add(s.toString());
+          }
+        }
+      }
+      // Extraire toutes les tranches d'âge uniques
+      final Set<String> allTranches = {};
+      for (final n in list) {
+        final raw = n['ageGroups'];
+        if (raw is List) {
+          for (final t in raw) {
+            if (t.toString().isNotEmpty) allTranches.add(t.toString());
+          }
+        }
+      }
+      // Ordre logique des tranches
+      const trancheOrder = ['0-1 an', '1-3 ans', '3-6 ans', '6-12 ans', '12+ ans'];
+      final sortedTranches = allTranches.toList()
+        ..sort((a, b) => trancheOrder.indexOf(a).compareTo(trancheOrder.indexOf(b)));
+
       setState(() {
         _nounous = list;
         _filtered = list;
         _isLoading = false;
+        _disponibilitesDynamiques = allDispos.toList()..sort();
+        _tranchesDynamiques = sortedTranches;
       });
       _animController.forward();
     } catch (e) {
@@ -93,7 +128,15 @@ class _SearchNounousScreenState extends State<SearchNounousScreen>
         }
         // Filtre disponibilité
         if (_selectedDisponibilite != null) {
-          final dispos = List<String>.from(n['disponibilites'] ?? []);
+          final disponibilitesRaw2 = n['disponibilites'];
+          List<String> dispos = [];
+          if (disponibilitesRaw2 is List) {
+            dispos = List<String>.from(disponibilitesRaw2);
+          } else if (disponibilitesRaw2 is Map) {
+            for (final slots in disponibilitesRaw2.values) {
+              if (slots is List) dispos.addAll(slots.cast<String>());
+            }
+          }
           if (!dispos.contains(_selectedDisponibilite)) return false;
         }
         // Filtre tranche d'âge
@@ -175,7 +218,10 @@ class _SearchNounousScreenState extends State<SearchNounousScreen>
               // ── Disponibilité ──
               _FilterLabel(icon: Icons.schedule_rounded, label: 'Disponibilité'),
               const SizedBox(height: 10),
-              Wrap(spacing: 8, runSpacing: 8, children: _disponibilites.map((d) =>
+              _disponibilitesDynamiques.isEmpty
+                  ? const Text('Aucune disponibilité enregistrée',
+                  style: TextStyle(fontSize: 13, color: AppColors.textGrey))
+                  : Wrap(spacing: 8, runSpacing: 8, children: _disponibilitesDynamiques.map((d) =>
                   GestureDetector(
                     onTap: () => setSheetState(() => tempDispo = tempDispo == d ? null : d),
                     child: Container(
@@ -193,9 +239,12 @@ class _SearchNounousScreenState extends State<SearchNounousScreen>
               const SizedBox(height: 20),
 
               // ── Tranche d'âge ──
-              _FilterLabel(icon: Icons.child_care_rounded, label: 'Tranche d\'âge enfants'),
+              _FilterLabel(icon: Icons.child_care_rounded, label: "Tranche d'âge enfants"),
               const SizedBox(height: 10),
-              Wrap(spacing: 8, runSpacing: 8, children: _tranches.map((t) =>
+              _tranchesDynamiques.isEmpty
+                  ? const Text('Aucune tranche enregistrée',
+                  style: TextStyle(fontSize: 13, color: AppColors.textGrey))
+                  : Wrap(spacing: 8, runSpacing: 8, children: _tranchesDynamiques.map((t) =>
                   GestureDetector(
                     onTap: () => setSheetState(() => tempTranche = tempTranche == t ? null : t),
                     child: Container(
@@ -336,7 +385,6 @@ class _SearchNounousScreenState extends State<SearchNounousScreen>
                     child: Row(children: [
                       if (_selectedVille != null) _FilterChip(icon: Icons.location_on_rounded, label: _selectedVille!, onRemove: () { setState(() => _selectedVille = null); _applyFilters(); }),
                       if (_selectedDisponibilite != null) _FilterChip(icon: Icons.schedule_rounded, label: _selectedDisponibilite!, onRemove: () { setState(() => _selectedDisponibilite = null); _applyFilters(); }),
-                      if (_selectedTranche != null) _FilterChip(icon: Icons.child_care_rounded, label: _selectedTranche!, onRemove: () { setState(() => _selectedTranche = null); _applyFilters(); }),
                       if (_maxPrix != null) _FilterChip(icon: Icons.payments_rounded, label: 'Max ${_maxPrix!.toInt()} DA', onRemove: () { setState(() => _maxPrix = null); _applyFilters(); }),
                     ]),
                   ),
@@ -472,7 +520,16 @@ class _NounouCard extends StatelessWidget {
     final score = (nounou['score'] ?? 0.0).toDouble();
     final nbAvis = nounou['nbAvis'] ?? 0;
     final photoBase64 = nounou['photoBase64'] as String?;
-    final disponibilites = List<String>.from(nounou['disponibilites'] ?? []);
+    final disponibilitesRaw = nounou['disponibilites'];
+    List<String> disponibilites = [];
+    if (disponibilitesRaw is List) {
+      disponibilites = List<String>.from(disponibilitesRaw);
+    } else if (disponibilitesRaw is Map) {
+      for (final slots in disponibilitesRaw.values) {
+        if (slots is List) disponibilites.addAll(slots.cast<String>());
+      }
+      disponibilites = disponibilites.toSet().toList();
+    }
 
     return GestureDetector(
       onTap: onTap,
