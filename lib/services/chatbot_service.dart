@@ -9,7 +9,7 @@ class ChatMessage {
 
 class ChatbotService {
   // ⚠️ Remplacez par votre clé Gemini (aistudio.google.com → Get API Key)
-  static const String _apiKey = 'AIzaSyC_4QBnLpk66OVFjCxP6Qk124HeHwbAWdY';
+  static const String _apiKey = '';
 
   static const String _systemPrompt =
       "Tu es l'assistant IA officiel de NounouGo, une application mobile française de mise en relation entre parents et nounous (babysitters). "
